@@ -13,44 +13,37 @@
 # Lots of fun!
 #######################################
 
-#######################################
-# IMPORTS
-#######################################
-
 import string
 
-#######################################
 # CONSTANTS
-#######################################
-
+## Get symbols to use for lexer
 DIGITS = '0123456789'
 LETTERS = string.ascii_letters
 LETTERS_DIGITS = LETTERS + DIGITS + '¬'
 
-#######################################
+#####################################################################################################################
 # ERRORS
-#######################################
-
+## Define error parent class to help with better debugging
 class Error:
+	# would be useful to have the start and end positions of the errors, the error type and the details
 	def __init__(self, pos_start, pos_end, error_name, details):
 		self.pos_start = pos_start
 		self.pos_end = pos_end
 		self.error_name = error_name
 		self.details = details
-	
+	# formatting function
 	def as_string(self):
 		result  = f'{self.error_name}: {self.details}\n'
 		result += f'File {self.pos_start.fn}, line {self.pos_start.ln + 1}'
 		result += '\n\n' + string_with_arrows(self.pos_start.ftxt, self.pos_start, self.pos_end)
 		return result
-
+# Sub classes for errors
+# illegal character			-> invalid character type passed
+# invalid syntax			-> valid character, but not what the parser is expecting
+# runtime error				-> error encountered in runtime, e.g. adding a list to a number
 class IllegalCharError(Error):
 	def __init__(self, pos_start, pos_end, details):
 		super().__init__(pos_start, pos_end, 'Illegal Character', details)
-
-class ExpectedCharError(Error):
-	def __init__(self, pos_start, pos_end, details):
-		super().__init__(pos_start, pos_end, 'Expected Character', details)
 
 class InvalidSyntaxError(Error):
 	def __init__(self, pos_start, pos_end, details=''):
@@ -79,10 +72,9 @@ class RTError(Error):
 
 		return 'Traceback (most recent call last):\n' + result
 
-#######################################
 # POSITION
-#######################################
-
+## need to track the position of everything
+## useful for lexer
 class Position:
 	def __init__(self, idx, ln, col, fn, ftxt):
 		self.idx = idx
@@ -104,9 +96,9 @@ class Position:
 	def copy(self):
 		return Position(self.idx, self.ln, self.col, self.fn, self.ftxt)
 
-#######################################
+#####################################################################################################################
 # TOKENS
-#######################################
+## Here's where we define preprovided token types, useful for the lexer and just cleans everything up a bit
 
 TT_INT				= 'INT'
 TT_FLOAT			= 'FLOAT'
@@ -131,14 +123,15 @@ TT_LT				= 'LT'
 TT_GT				= 'GT'
 TT_LTE				= 'LTE'
 TT_GTE				= 'GTE'
-TT_TRUE				= 'TRUE'
-TT_FALSE			= 'FALSE'
 TT_EOF				= 'EOF'
 TT_SEMI				= 'SEMI'
 TT_COMMA			= 'COMMA'
 TT_ARROW			= 'ARROW'
 TT_STRING			= 'STRING'
 
+# These are the keywords in our language
+# Note that built-in function definitons are added to our global symbol table,
+# are named identifiers by the lexer, and are picked up in the call() level of the parser
 KEYWORDS = [
 	'∧',
 	'∨',
@@ -157,6 +150,8 @@ KEYWORDS = [
 	'func'
 ]
 
+## A token class that is used by the lexer. It tracks start and end positions, 
+## the type and value of a token, and has a helper function to determine if a token matches one of interest
 class Token:
 	def __init__(self, type_, value=None, pos_start=None, pos_end=None):
 		self.type = type_
@@ -177,10 +172,9 @@ class Token:
 		if self.value: return f'{self.type}:{self.value}'
 		return f'{self.type}'
 
-#######################################
+#####################################################################################################################
 # LEXER
-#######################################
-
+# generates a list of tokens given text
 class Lexer:
 	def __init__(self, fn, text):
 		self.fn = fn
@@ -188,90 +182,119 @@ class Lexer:
 		self.pos = Position(-1, 0, -1, fn, text)
 		self.current_char = None
 		self.advance()
-	
+	# helper function for advancing the current position and current character
 	def advance(self):
 		self.pos.advance(self.current_char)
 		self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
-
+	# Helper function for peeking ahead in the case of multi-char tokens that share starting chars
+	# (e.g. = vs ==)
 	def peek(self):
 		peek_pos = self.pos.idx + 1
 		if peek_pos > len(self.text) - 1:
 			return None
 		else:
 			return self.text[peek_pos]
-
+	# meat and potatoes
 	def make_tokens(self):
+		# start off with an empty list
 		tokens = []
-
+		# check for different character types, deal with each accordingly
 		while self.current_char != None:
+			# ignore whitespace
 			if self.current_char in ' \t':
 				self.advance()
+			# If it's a digit, make a number
+			# can't start variable names with numbers in Emojithon
 			elif self.current_char in DIGITS:
 				tokens.append(self.make_number())
+			# identifiers
 			elif self.current_char in LETTERS or self.current_char in ('¬', '∧','∨'):
 				tokens.append(self.make_identifier())
+			# adder
 			elif self.current_char == '+':
 				tokens.append(Token(TT_PLUS, pos_start=self.pos))
 				self.advance()
+			# statement separator 
 			elif self.current_char == ';':
 				tokens.append(Token(TT_SEMI, pos_start=self.pos))
 				self.advance()
+			# arrow (for function body)
 			elif self.current_char == '-' and self.peek() == '>':
 				self.advance()
 				tokens.append(self.make_arrow())
+			# minus
 			elif self.current_char == '-':
 				tokens.append(Token(TT_MINUS, pos_start=self.pos))
 				self.advance()
+			# multiply
 			elif self.current_char == '*':
 				tokens.append(Token(TT_MUL, pos_start=self.pos))
 				self.advance()
+			# divide
 			elif self.current_char == '/':
 				tokens.append(Token(TT_DIV, pos_start=self.pos))
 				self.advance()
+			# power
 			elif self.current_char == '^':
 				tokens.append(Token(TT_POW, pos_start=self.pos))
 				self.advance()
+			# left parenths
 			elif self.current_char == '(':
 				tokens.append(Token(TT_LPAREN, pos_start=self.pos))
 				self.advance()
+			# right parenths
 			elif self.current_char == ')':
 				tokens.append(Token(TT_RPAREN, pos_start=self.pos))
 				self.advance()
+			# left curly brace
 			elif self.current_char == '{':
 				tokens.append(Token(TT_LBRAC, pos_start=self.pos))
 				self.advance()
+			# right curly brace
 			elif self.current_char == '}':
 				tokens.append(Token(TT_RBRAC, pos_start=self.pos))
 				self.advance()
+			# left bracket
 			elif self.current_char == '[':
 				tokens.append(Token(TT_LSQUARE, pos_start=self.pos))
 				self.advance()
+			# right bracket
 			elif self.current_char == ']':
 				tokens.append(Token(TT_RSQUARE, pos_start=self.pos))
 				self.advance()
+			# comma
 			elif self.current_char == ',':
 				tokens.append(Token(TT_COMMA, pos_start=self.pos))
 				self.advance()
+			# quote
 			elif self.current_char == '"':
 				tokens.append(self.make_string())
+			# assignment
 			elif self.current_char == ':' and self.peek() == '=':
 				self.advance()
 				tokens.append(self.make_assign())
+			# equals op
 			elif self.current_char == '=':
 				tokens.append(self.make_equals())
+			# less than op
 			elif self.current_char == '<':
 				tokens.append(self.make_less_than())
+			# greater than op
 			elif self.current_char == '>':
 				tokens.append(self.make_greater_than())
+			# if not recognized, raise error
 			else:
 				pos_start = self.pos.copy()
 				char = self.current_char
 				self.advance()
 				return [], IllegalCharError(pos_start, self.pos, "'" + char + "'")
-
+		# when done, append EOF token
 		tokens.append(Token(TT_EOF, pos_start=self.pos))
 		return tokens, None
+	
+	# Helper functions for lexer
 
+	# make a number-- emojithon support floats!
 	def make_number(self):
 		num_str = ''
 		dot_count = 0
@@ -288,7 +311,7 @@ class Lexer:
 			return Token(TT_INT, int(num_str), pos_start, self.pos)
 		else:
 			return Token(TT_FLOAT, float(num_str), pos_start, self.pos)
-
+	# create identifiers
 	def make_identifier(self):
 		id_str = ''
 		pos_start = self.pos.copy()
@@ -299,7 +322,7 @@ class Lexer:
 
 		tok_type = TT_KEYWORD if id_str in KEYWORDS else TT_IDENTIFIER
 		return Token(tok_type, id_str, pos_start, self.pos)
-	
+	# create string! Emojithon supports stardard escape characters, identified with \
 	def make_string(self):
 		pos_start = self.pos.copy()
 		self.advance()
@@ -330,31 +353,32 @@ class Lexer:
 		self.advance()
 		pos_end = self.pos.copy()
 		return Token(TT_STRING, string, pos_start,pos_end)
-
+	
+	# make a not equals token
 	def make_not_equals(self):
 		pos_start = self.pos.copy()
 		self.advance()
 		return Token(TT_NE, pos_start=pos_start, pos_end=self.pos), None
-
+	# make an assign token
 	def make_assign(self):
 		tok_type = TT_EQ
 		pos_start = self.pos.copy()
 		self.advance()
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
-
+	# make an arrow token
 	def make_arrow(self):
 		tok_type = TT_ARROW
 		pos_start = self.pos.copy()
 		self.advance()
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
-	
+	# make an equals token
 	def make_equals(self):
 		pos_start = self.pos.copy()
 		self.advance()
 		tok_type = TT_EE
 
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
-
+	# make a less than token
 	def make_less_than(self):
 		tok_type = TT_LT
 		pos_start = self.pos.copy()
@@ -365,7 +389,7 @@ class Lexer:
 			tok_type = TT_LTE
 
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
-
+	# make a greater than token	
 	def make_greater_than(self):
 		tok_type = TT_GT
 		pos_start = self.pos.copy()
@@ -377,10 +401,13 @@ class Lexer:
 
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
 
-#######################################
+#####################################################################################################################
 # NODES
-#######################################
+## These are the node classes that the parser will generate for us
+## Most of it's pretty straightforward, tracking start and end positions of nodes as well as their relevant tokens
+## Certain nodes have representation classes too for pretty printing
 
+# Number is simple. The token start/end is the number start/end
 class NumberNode:
 	def __init__(self, tok):
 		self.tok = tok
@@ -391,6 +418,7 @@ class NumberNode:
 	def __repr__(self):
 		return f'{self.tok}'
 
+# strings are similar, start and end are just the token's start/end
 class StringNode:
 	def __init__(self, tok):
 		self.tok = tok
@@ -401,12 +429,14 @@ class StringNode:
 	def __repr__(self):
 		return f'{self.tok}'
 
+# t/f simple too
 class TF_Node:
 	def __init__(self, tok):
 		self.tok = tok
 		self.pos_start = self.tok.pos_start
 		self.pos_end = self.tok.pos_end
 
+# var access start/end are just the identifier's start/end
 class VarAccessNode:
 	def __init__(self, var_name_tok):
 		self.var_name_tok = var_name_tok
@@ -414,6 +444,7 @@ class VarAccessNode:
 		self.pos_start = self.var_name_tok.pos_start
 		self.pos_end = self.var_name_tok.pos_end
 
+# var assign finally gets a little interesting; start is the variable start, end is the the value_node end position
 class VarAssignNode:
 	def __init__(self, var_name_tok, value_node):
 		self.var_name_tok = var_name_tok
@@ -421,7 +452,7 @@ class VarAssignNode:
 
 		self.pos_start = self.var_name_tok.pos_start
 		self.pos_end = self.value_node.pos_end
-
+# tracks NODE OP NODE utilities. Start/end similar to var assign
 class BinOpNode:
 	def __init__(self, left_node, op_tok, right_node):
 		self.left_node = left_node
@@ -434,6 +465,7 @@ class BinOpNode:
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_tok}, {self.right_node})'
 
+# Unary op (OP NODE format)is similar but it tracks op tok start positon
 class UnaryOpNode:
 	def __init__(self, op_tok, node):
 		self.op_tok = op_tok
@@ -444,13 +476,13 @@ class UnaryOpNode:
 
 	def __repr__(self):
 		return f'({self.op_tok}, {self.node})'
-
+# Skip does nothing. Inherited from WHILE homework, thought I might as well leave it in
 class SkipNode:
 	def __init__(self, tok):
 		self.tok = tok
 		self.pos_start = self.tok.pos_start
 		self.pos_end = self.tok.pos_end
-
+# If node tracks cases (comparison and body) and else case
 class IfNode:
 	def __init__(self, cases, else_case):
 		self.cases = cases
@@ -458,7 +490,7 @@ class IfNode:
 
 		self.pos_start = self.cases[0][0].pos_start
 		self.pos_end = (self.else_case or self.cases[len(self.cases) - 1][0]).pos_end
-
+# While node just needs to track a condition and a body
 class WhileNode:
 	def __init__(self, condition_node, body_node):
 		self.condition_node = condition_node
@@ -466,7 +498,9 @@ class WhileNode:
 
 		self.pos_start = self.condition_node.pos_start
 		self.pos_end = self.body_node.pos_end
-
+# For node is a bit more complex
+# it requires a variable name for your counter, a start value, an end value, 
+# an optional step value, and a body node
 class ForNode:
 	def __init__(self, var_name_tok, start_value_node, end_value_node, step_value_node, body_node):
 		self.var_name_tok = var_name_tok
@@ -477,7 +511,7 @@ class ForNode:
 
 		self.pos_start = self.var_name_tok.pos_start
 		self.pos_end = self.body_node.pos_end
-
+# Functions require function names, arguments, and a body node
 class FuncNode:
 	def __init__(self, func_name_tok, args_toks, body_node):
 		self.func_name_tok = func_name_tok
@@ -492,8 +526,7 @@ class FuncNode:
 			self.pos_start = self.body_node.pos_start
 
 		self.pos_end = self.body_node.pos_end
-		
-
+# Node required to call a function
 class CallFuncNode:
 	def __init__(self, func_to_call, arg_nodes):
 		self.func_to_call = func_to_call
@@ -505,24 +538,29 @@ class CallFuncNode:
 			self.pos_end = self.arg_nodes[len(self.arg_nodes)-1].pos_end
 		else:
 			self.pos_end = self.func_to_call.pos_end
-
-
+# Bracket compound node for nested-multi statements. Keeps children as a list, start/end pos determined in parser
 class BracCompoundNode:
 	"""Represents a block of statements"""
 	def __init__(self, children, start_pos, end_pos):
 		self.children = children
 		self.pos_start = start_pos
 		self.pos_end = end_pos
-
+## List node just has elements. Start/end pos determined in parser
 class ListNode:
 	def __init__(self, elements, start_pos, end_pos):
 		self.elements = elements
 		self.pos_start = start_pos
 		self.pos_end = end_pos
 
-#######################################
+#####################################################################################################################
 # PARSE RESULT
-#######################################
+# this is a helper class to track the results of parsing. Super helpful for debugging.
+# Within it we have:
+# init 					-> keeps an error variable for raising flags when something goes wrong, node variable for tracking success, and position tracker
+# register_advancement 	-> tracks movement through our tokens list
+# register				-> updates position based on how many tokens a node touches
+# success				-> generally if there's no error we call success on the result (or none if nothing returns)
+# failure				-> only calls if something terrible has gone wrong
 
 class ParseResult:
 	def __init__(self):
@@ -547,9 +585,10 @@ class ParseResult:
 			self.error = error
 		return self
 
-#######################################
+#####################################################################################################################
 # PARSER
-#######################################
+# The parser class is defined at runtime on our tokens. Usually at each significant "level" we instantiate a ParseResult
+
 
 class Parser:
 	def __init__(self, tokens):
@@ -1386,7 +1425,7 @@ class BaseFunction(Value):
 
 class Function(BaseFunction):
 	def __init__(self, func_name, body_node, arg_names):
-		super().__init__()
+		super().__init__(func_name)
 		self.func_name = func_name or 'anonymous'
 		self.body_node = body_node
 		self.arg_names = arg_names
@@ -1497,13 +1536,18 @@ class BuiltInFunction(BaseFunction):
 	execute_is_string.arg_names = ['value']
 	# check if a value is a function
 	def execute_is_func(self, sub_context):
-		is_func = isinstance(sub_context.symbol_table.get('value'), Function)
+		is_func = isinstance(sub_context.symbol_table.get('value'), Function) or isinstance(sub_context.symbol_table.get('value'), BuiltInFunction)
 		return RTResult().success(Number.true if is_func else Number.false)
 	execute_is_func.arg_names = ['value']
+	# check if a value is a list
+	def execute_is_list(self, sub_context):
+		is_list = isinstance(sub_context.symbol_table.get('value'), List)
+		return RTResult().success(Number.true if is_list else Number.false)
+	execute_is_list.arg_names = ['value']
 	# add append for lists
 	def execute_append(self, sub_context):
-		list_to_append_to = sub_conntext.symbol_table['List']
-		val_to_append = sub_context.symbol_table['value']
+		list_to_append_to = sub_context.symbol_table.get('List')
+		val_to_append = sub_context.symbol_table.get('value')
 
 		if not isinstance(list_to_append_to, List):
 			return RTResult().failue(RTError(
@@ -1512,13 +1556,13 @@ class BuiltInFunction(BaseFunction):
 				sub_context
 			)
 			)
-		list_to_append_to.elements.append(value)
+		list_to_append_to.elements.append(val_to_append)
 		return RTResult().success(Number.null)
 	execute_append.arg_names = ['List', 'value']
 	# add pop for lists
-	def execute_pop():
-		list_to_mutate = sub_conntext.symbol_table['List']
-		index_to_pop = sub_context.symbol_table['number']
+	def execute_pop(self, sub_context):
+		list_to_mutate = sub_context.symbol_table.get('List')
+		index_to_pop = sub_context.symbol_table.get('number')
 		if not isinstance(list_to_mutate, List):
 			return RTResult().failue(RTError(
 				self.pos_start, self.pos_end,
@@ -1543,7 +1587,7 @@ class BuiltInFunction(BaseFunction):
 			)
 		element = list_to_mutate.elements.pop(index_to_pop.value)
 		return RTResult().success(element)
-	execute_pop.arg_names 		= ['List', 'number']
+	execute_pop.arg_names = ['List', 'number']
 
 BuiltInFunction.print 			= BuiltInFunction('print')
 BuiltInFunction.print_assign 	= BuiltInFunction('print_assign')
@@ -1551,6 +1595,7 @@ BuiltInFunction.input 			= BuiltInFunction('input')
 BuiltInFunction.is_number 		= BuiltInFunction('is_number')
 BuiltInFunction.is_string 		= BuiltInFunction('is_string')
 BuiltInFunction.is_func 		= BuiltInFunction('is_func')
+BuiltInFunction.is_list 		= BuiltInFunction('is_list')
 BuiltInFunction.append 			= BuiltInFunction('append')
 BuiltInFunction.pop 			= BuiltInFunction('pop')
 
@@ -1893,14 +1938,15 @@ class Interpreter:
 #######################################
 
 global_symbol_table = SymbolTable()
-global_symbol_table.set('NULL', Number.null)
-global_symbol_table.set('FALSE', Number.false)
-global_symbol_table.set('TRUE', Number.true)
+global_symbol_table.set('null', Number.null)
+global_symbol_table.set('false', Number.false)
+global_symbol_table.set('true', Number.true)
 global_symbol_table.set('print', BuiltInFunction('print'))
 global_symbol_table.set('print_assign', BuiltInFunction('print_assign'))
 global_symbol_table.set('input', BuiltInFunction('input'))
 global_symbol_table.set('is_number', BuiltInFunction('is_number'))
 global_symbol_table.set('is_string', BuiltInFunction('is_string'))
+global_symbol_table.set('is_list', BuiltInFunction('is_list'))
 global_symbol_table.set('append', BuiltInFunction('append'))
 global_symbol_table.set('pop', BuiltInFunction('pop'))
 global_symbol_table.set('is_func', BuiltInFunction('is_func'))
@@ -1931,10 +1977,12 @@ def run(fn, text):
 	# Generate tokens
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
+	print(tokens)
 	if error: return None, error
 	# Generate AST
 	parser = Parser(tokens)
 	ast_list = parser.parse()
+	print([item.node for item in ast_list])
 	# Run program
 	interpreter = Interpreter()
 	context = Context('<program>')
@@ -1943,20 +1991,21 @@ def run(fn, text):
 		if type(ast) is list:
 			for a in ast:
 				result = interpreter.visit(ast.node, context)
-				print(result.value)
+				#print(result.value)
 		else:
 			result = interpreter.visit(ast.node, context)
-			print(result.value)
+			#print(result.value)
 
 	pre_defined_symbols = [
-		'NULL',
-		'FALSE',
-		'TRUE',
+		'null',
+		'false',
+		'true',
 		'print',
 		'print_assign',
 		'input',
 		'is_number',
 		'is_string',
+		'is_list',
 		'append',
 		'pop',
 		'is_func'
