@@ -137,6 +137,7 @@ TT_EOF				= 'EOF'
 TT_SEMI				= 'SEMI'
 TT_COMMA			= 'COMMA'
 TT_ARROW			= 'ARROW'
+TT_STRING			= 'STRING'
 
 KEYWORDS = [
 	'∧',
@@ -251,6 +252,8 @@ class Lexer:
 			elif self.current_char == ',':
 				tokens.append(Token(TT_COMMA, pos_start=self.pos))
 				self.advance()
+			elif self.current_char == '"':
+				tokens.append(self.make_string())
 			elif self.current_char == ':' and self.peek() == '=':
 				self.advance()
 				tokens.append(self.make_assign())
@@ -296,6 +299,37 @@ class Lexer:
 
 		tok_type = TT_KEYWORD if id_str in KEYWORDS else TT_IDENTIFIER
 		return Token(tok_type, id_str, pos_start, self.pos)
+	
+	def make_string(self):
+		pos_start = self.pos.copy()
+		self.advance()
+		escape_char = False
+		string = ''
+		escape_dict = {
+			'n':'\n',
+			't' : '\t'
+		}
+
+		# While current character exists and character is not end of string (")
+		while self.current_char != None and (self.current_char != '"' or escape_char):
+			if escape_char:
+				# Either gets the current character from the escape dict, or just the current character
+				string += escape_dict.get(self.current_char, self.current_char)
+
+			else:
+				# Check for escape characters
+				# Need the double backslash to check for a single backslash 
+				if self.current_char == '\\':
+					escape_char = True
+				else:
+					string += self.current_char
+			self.advance()
+			## Add in escape char check above?
+			escape_char = False
+
+		self.advance()
+		pos_end = self.pos.copy()
+		return Token(TT_STRING, string, pos_start,pos_end)
 
 	def make_not_equals(self):
 		pos_start = self.pos.copy()
@@ -348,6 +382,16 @@ class Lexer:
 #######################################
 
 class NumberNode:
+	def __init__(self, tok):
+		self.tok = tok
+
+		self.pos_start = self.tok.pos_start
+		self.pos_end = self.tok.pos_end
+
+	def __repr__(self):
+		return f'{self.tok}'
+
+class StringNode:
 	def __init__(self, tok):
 		self.tok = tok
 
@@ -813,6 +857,11 @@ class Parser:
 			self.advance()
 			return res.success(NumberNode(tok))
 
+		if tok.type in (TT_STRING):
+			res.register_advancement()
+			self.advance()
+			return res.success(StringNode(tok))
+
 		if tok.matches(TT_KEYWORD, 'true') or tok.matches(TT_KEYWORD, 'false'):
 			res.register_advancement()
 			self.advance()
@@ -1090,15 +1139,15 @@ class Value:
 	def ored_by(self, other):
 		return None, self.illegal_operation(other)
 	def notted(self):
-		return None, self.illegal_operation(other)
+		return None, self.illegal_operation()
 	def copy(self):
-		return None, self.illegal_operation(other)
+		return None, self.illegal_operation()
 	def is_true(self):
-		return None, self.illegal_operation(other)
+		return None, self.illegal_operation()
 	def __repr__(self):
-		return None, self.illegal_operation(other)
+		return None, self.illegal_operation()
 	def execute(self, args):
-		return RTResult().failure(self.illegal_operation())
+		return RTResult().failure(self.illegal_operation(args))
 	def illegal_operation(self, other=None):
 		if not other: other = self
 		return RTError(
@@ -1107,6 +1156,74 @@ class Value:
 			self.context
 		)
 		
+class String(Value):
+	def __init__(self, value):
+		super().__init__()
+		self.value = value
+		self.set_pos()
+		self.set_context()
+
+	def added_to(self, other):
+		if isinstance(other, String):
+			return String(self.value+other.value).set_context(self.context), None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
+	def multed_by(self, other):
+		if isinstance(other, Number):
+			return String(self.value*other.value).set_context(self.context), None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
+	def subbed_by(self, other):
+		if isinstance(other, String):
+			original_val = self.value
+			to_delete = other.value
+			if len(to_delete) > len(original_val):
+				return String(self.value).set_context(self.context), None
+			else:
+				new_str = ''
+				len_to_delete = len(to_delete)
+				while len(original_val) > len_to_delete:
+					to_check = original_val[:len_to_delete]
+					if to_check == to_delete:
+						original_val = original_val[len_to_delete:]
+					else:
+						new_str+= original_val[0]
+						original_val = original_val[1:]
+				if len(original_val) <= len_to_delete and original_val != to_delete:
+					new_str+= original_val
+				return String(new_str).set_context(self.context), None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
+	def dived_by(self, other):
+		if isinstance(other, Number):
+			chunks = []
+			if other.value > 0:
+				chunk_len = -1 * (-len(self.value) // other.value)
+			else:
+				return List([self.value]), None
+			string = self.value
+			while len(string) >= chunk_len:
+				chunks.append(string[:chunk_len])
+				string = string[chunk_len:]
+			if len(string) > 0:
+				chunks.append(string)
+			return List(chunks), None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
+	def is_true(self):
+		return len(self.value) >0
+
+	def copy(self):
+		copy = String(self.value)
+		copy.set_pos(self.pos_start, self.pos_end)
+		copy.set_context(self.context)
+		return copy
+	def __repr__(self):
+		return self.value
 
 class Number(Value):
 	def __init__(self, value):
@@ -1284,6 +1401,21 @@ class List(Value):
 		new_els = [Number(element.value * val.value) for element in self.elements]
 		new_list = List(new_els)
 		return new_list, None
+	
+	def get_comparison_eq(self, other):
+		if isinstance(other, List):
+			self_els = self.elements
+			other_els = other.elements
+			if len(self_els) == len(other_els):
+				for i, el in enumerate(self_els):
+					if el.value!=other_els[i].value:
+						return  Number(int(el == other_els[i])).set_context(self.context), None
+				return Number(int(len(self_els) == len(other_els))).set_context(self.context), None
+			else:
+				return  Number(int(len(self_els) == len(other_els))).set_context(self.context), None
+			return Number(int(self.value == other.value)).set_context(self.context), None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
 	def subbed_by(self, val):
 		new_list = self.copy()
@@ -1295,11 +1427,25 @@ class List(Value):
 			'Invalid Index'
 			)
 
+	def anded_by(self, other):
+		if isinstance(other, Number):
+			try:
+				return self.elements[other.value], None
+			except:
+				return None, RTError(other.pos_start, other.pos_end, 
+				'Invalid Index'
+				)
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
 	def copy(self):
 		copy = List(self.elements[:])
 		copy.set_pos(self.pos_start, self.pos_end)
 		copy.set_context(self.context)
 		return copy
+
+	def __repr__(self):
+		return f"{self.elements}"
 
 
 
@@ -1370,6 +1516,11 @@ class Interpreter:
 			return res.failure(error)
 		else:
 			return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+	def visit_StringNode(self, node, context):
+		return RTResult().success(
+			String(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
+		)
 
 
 	def visit_VarAccessNode(self, node, context):
@@ -1483,10 +1634,10 @@ class Interpreter:
 
 			if not condition.is_true(): break
 
-			res.register(self.visit(node.body_node, context))
+			val = res.register(self.visit(node.body_node, context))
 			if res.error: return res
 
-		return res.success(None)
+		return res.success(val)
 
 	def visit_ForNode(self, node, context):
 		res = RTResult()
@@ -1514,10 +1665,10 @@ class Interpreter:
 			context.symbol_table.set(node.var_name_tok.value, Number(i))
 			i += step_value.value
 
-			res.register(self.visit(node.body_node, context))
+			last_value = res.register(self.visit(node.body_node, context))
 			if res.error: return res
 
-		return res.success(None)
+		return res.success(last_value)
 
 	def visit_BracCompoundNode(self, node, context):
 		res = RTResult()
