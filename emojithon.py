@@ -1704,6 +1704,19 @@ class BuiltInFunction(BaseFunction):
 		list_to_append_to.elements.append(val_to_append)
 		return RTResult().success(Number.null)
 	execute_append.arg_names = ['List', 'value']
+	def execute_len(self, sub_context):
+		list_to_measure = sub_context.symbol_table.get('List')
+
+		if not isinstance(list_to_measure, List):
+			return RTResult().failue(RTError(
+				self.pos_start, self.pos_end,
+				'len argument must be a list',
+				sub_context
+			)
+			)
+		length = len(list_to_measure.elements)
+		return RTResult().success(Number(length))
+	execute_len.arg_names = ['List']
 	# add pop for lists
 	def execute_pop(self, sub_context):
 		retreivable_ob = sub_context.symbol_table.get('retreivable')
@@ -1844,6 +1857,39 @@ class BuiltInFunction(BaseFunction):
 			)
 	execute_set.arg_names = ['retreivable', 'addr', 'value']
 
+	# Include support for loading and running external files
+	def execute_load(self, sub_context):
+		fp = sub_context.symbol_table.get('fp')
+		if not isinstance(fp, String):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'file path in load() must be a string',
+					sub_context
+				)
+				)
+		fp = fp.value
+		try:
+			with open(fp, "r") as f:
+				script = f.read()
+		except Exception as ex:
+			return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'failed to load file {}'.format(fp),
+					sub_context
+				)
+				)
+		run(fp, script)
+		## TODO: change run to include error reporting/result
+		# if error:
+		# 	return RTResult().failue(RTError(
+		# 			self.pos_start, self.pos_end,
+		# 			'failed to execute code from file {}'.format(fp),
+		# 			sub_context
+		# 		)
+		# 		)
+		return RTResult().success(Number.null)
+	execute_load.arg_names = ['fp']
+
 BuiltInFunction.print 			= BuiltInFunction('print')
 BuiltInFunction.print_assign 	= BuiltInFunction('print_assign')
 BuiltInFunction.input 			= BuiltInFunction('input')
@@ -1851,10 +1897,12 @@ BuiltInFunction.is_number 		= BuiltInFunction('is_number')
 BuiltInFunction.is_string 		= BuiltInFunction('is_string')
 BuiltInFunction.is_func 		= BuiltInFunction('is_func')
 BuiltInFunction.is_list 		= BuiltInFunction('is_list')
+BuiltInFunction.len 			= BuiltInFunction('len')
 BuiltInFunction.append 			= BuiltInFunction('append')
 BuiltInFunction.pop 			= BuiltInFunction('pop')
 BuiltInFunction.get 			= BuiltInFunction('get')
 BuiltInFunction.set 			= BuiltInFunction('set')
+BuiltInFunction.load 			= BuiltInFunction('load')
 
 class Map(Value):
 	def __init__(self, map_):
@@ -2258,7 +2306,7 @@ global_symbol_table.set('pop', BuiltInFunction('pop'))
 global_symbol_table.set('is_func', BuiltInFunction('is_func'))
 global_symbol_table.set('get', BuiltInFunction('get'))
 global_symbol_table.set('set', BuiltInFunction('set'))
-
+global_symbol_table.set('load', BuiltInFunction('load'))
 
 # def run(fn, text):
 # 	# Generate tokens
@@ -2314,11 +2362,13 @@ def run(fn, text):
 		'is_number',
 		'is_string',
 		'is_list',
-		'append',
-		'pop',
 		'is_func',
+		'append',
+		'len',
+		'pop',
 		'get',
-		'set'
+		'set', 
+		'load'
 	]
 
 	keys = list(context.symbol_table.symbols.keys())
