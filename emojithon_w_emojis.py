@@ -145,8 +145,7 @@ KEYWORDS = [
 	'🤷',
 	'👈',
 	'⏳',
-	'👉', 
-	'⚙️',
+	'👉',
 	'👌',
 	'🙅', 
 	'😶',
@@ -239,7 +238,7 @@ class Lexer:
 			elif self.current_char in LETTERS+pre_defined_symbols_vals or self.current_char in ('🚫', '👏','🙌'):
 				tokens.append(self.make_identifier())
 			# adder
-			elif self.current_char == '➕':
+			elif self.current_char == '🍐':
 				tokens.append(Token(TT_PLUS, pos_start=self.pos))
 				self.advance()
 			# statement separator 
@@ -251,15 +250,15 @@ class Lexer:
 				self.advance()
 				tokens.append(self.make_arrow())
 			# minus
-			elif self.current_char == '➖':
+			elif self.current_char == '🧂':
 				tokens.append(Token(TT_MINUS, pos_start=self.pos))
 				self.advance()
 			# multiply
-			elif self.current_char == '✖️':
+			elif self.current_char == '🍈':
 				tokens.append(Token(TT_MUL, pos_start=self.pos))
 				self.advance()
 			# divide
-			elif self.current_char == '➗':
+			elif self.current_char == '🍆':
 				tokens.append(Token(TT_DIV, pos_start=self.pos))
 				self.advance()
 			# power
@@ -302,7 +301,7 @@ class Lexer:
 				tokens.append(Token(TT_EQ, pos_start=self.pos, pos_end=self.pos))
 				self.advance()
 			# equals op
-			elif self.current_char == '🧑‍🤝‍🧑':
+			elif self.current_char == '😼':
 				tokens.append(self.make_equals())
 			# less than op
 			elif self.current_char == '😾':
@@ -347,7 +346,7 @@ class Lexer:
 		while self.current_char != None and self.current_char in LETTERS_DIGITS+pre_defined_symbols_vals + '_' + '🚫' +'👏'+'🙌':
 			id_str += self.current_char
 			self.advance()
-
+		
 		tok_type = TT_KEYWORD if id_str in KEYWORDS else TT_IDENTIFIER
 		return Token(tok_type, id_str, pos_start, self.pos)
 	# create string! Emojithon supports stardard escape characters, identified with \
@@ -977,7 +976,7 @@ class Parser:
 
 	def while_expr(self):
 		res = ParseResult()
-
+		
 		if not self.current_tok.matches(TT_KEYWORD, '⏳'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -990,10 +989,10 @@ class Parser:
 		condition = res.register(self.expr())
 		if res.error: return res
 
-		if not self.current_tok.matches(TT_KEYWORD, '⚙️'):
+		if not self.current_tok.matches(TT_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
-				f"Expected '⚙️'"
+				f"Expected '👉'"
 			))
 
 		res.register_advancement()
@@ -1058,10 +1057,10 @@ class Parser:
 		else:
 			step_value = None
 
-		if not self.current_tok.matches(TT_KEYWORD, '⚙️'):
+		if not self.current_tok.matches(TT_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
-				f"Expected '⚙️'"
+				f"Expected '👉'"
 			))
 
 		res.register_advancement()
