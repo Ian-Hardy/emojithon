@@ -8,7 +8,9 @@
 # 	- Implementing Backet support
 # 	- Implementing Lists
 #   - Allowing access for undefined variables
-#   - Obviously changing a bunch of syntax
+#   - Changing a bunch of syntax
+# 	- Extra built-in functions
+# 	- dicts
 # And of course, implementing all this made me deeply familiar with the base code
 # Lots of fun!
 #######################################
@@ -128,6 +130,7 @@ TT_SEMI				= 'SEMI'
 TT_COMMA			= 'COMMA'
 TT_ARROW			= 'ARROW'
 TT_STRING			= 'STRING'
+TT_NEWLINE			= 'NEWLINE'
 
 # These are the keywords in our language
 # Note that built-in function definitons are added to our global symbol table at runtime,
@@ -147,7 +150,8 @@ KEYWORDS = [
 	'true',
 	'false', 
 	'skip',
-	'func'
+	'func',
+	'map'
 ]
 
 ## A token class that is used by the lexer. It tracks start and end positions, 
@@ -202,6 +206,9 @@ class Lexer:
 		while self.current_char != None:
 			# ignore whitespace
 			if self.current_char in ' \t':
+				self.advance()
+			if self.current_char in '\n':
+				tokens.append(Token(TT_NEWLINE, pos_start=self.pos))
 				self.advance()
 			# If it's a digit, make a number
 			# can't start variable names with numbers in Emojithon
@@ -438,19 +445,19 @@ class TF_Node:
 
 # var access start/end are just the identifier's start/end
 class VarAccessNode:
-	def __init__(self, var_name_tok):
-		self.var_name_tok = var_name_tok
+	def __init__(self, tok):
+		self.tok = tok
 
-		self.pos_start = self.var_name_tok.pos_start
-		self.pos_end = self.var_name_tok.pos_end
+		self.pos_start = self.tok.pos_start
+		self.pos_end = self.tok.pos_end
 
 # var assign finally gets a little interesting; start is the variable start, end is the the value_node end position
 class VarAssignNode:
-	def __init__(self, var_name_tok, value_node):
-		self.var_name_tok = var_name_tok
+	def __init__(self, tok, value_node):
+		self.tok = tok
 		self.value_node = value_node
 
-		self.pos_start = self.var_name_tok.pos_start
+		self.pos_start = self.tok.pos_start
 		self.pos_end = self.value_node.pos_end
 # tracks NODE OP NODE utilities. Start/end similar to var assign
 class BinOpNode:
@@ -546,10 +553,17 @@ class BracCompoundNode:
 		self.pos_start = start_pos
 		self.pos_end = end_pos
 
-## List node just has elements. Start/end pos determined in parser
+## List node just has elements. Start/end pos determined in parser, as empty lists can't determine start/end
 class ListNode:
 	def __init__(self, elements, start_pos, end_pos):
 		self.elements = elements
+		self.pos_start = start_pos
+		self.pos_end = end_pos
+
+## Map node has elements of type list. Start/end pos determined in parser
+class MapNode:
+	def __init__(self, map_, start_pos, end_pos):
+		self.map_ = map_
 		self.pos_start = start_pos
 		self.pos_end = end_pos
 
@@ -640,20 +654,35 @@ class Parser:
 	def statement_list(self):
 
 		"""
-        statement_list : statement
-                       | statement SEMI statement_list
+        statement_list : expr ((SEMI | NEWLINE)* expr)*
         """
-		res = self.expr()
-		results = [res]
-		while self.current_tok.type == TT_SEMI:
+		res = ParseResult()
+		pos_start = self.current_tok.pos_start.copy()
+
+		## Skip to first expression
+		while self.current_tok.type == TT_SEMI or self.current_tok.type == TT_NEWLINE:
 			res.register_advancement()
 			self.advance()
-			res = self.expr()
-			results.append(res)
+		# Instantiate statement list, populate with first expression
+		statements = []
+		expression = self.expr()
+		if res.error: return res
+		statements.append(expression)
+
+		while True:
+			num_lines = 0
+			while self.current_tok.type == TT_SEMI or self.current_tok.type == TT_NEWLINE:
+				res.register_advancement()
+				self.advance()
+				num_lines += 1
+			if num_lines == 0:
+				break
+			expression = self.expr()
+			statements.append(expression)
 
 		if self.current_tok.type == TT_IDENTIFIER:
 			self.error()
-		return results
+		return statements
 
 	def peek(self):
 		if self.tok_idx < len(self.tokens)-1:
@@ -877,6 +906,11 @@ class Parser:
 			if res.error: return res
 			return res.success(func_def)
 
+		elif tok.matches(TT_KEYWORD, 'map'):
+			map_expr = res.register(self.map_expr())
+			if res.error: return res
+			return res.success(map_expr)
+
 		return res.failure(InvalidSyntaxError(
 			tok.pos_start, tok.pos_end,
 			"Expected if, for, while, func, skip, int, float, identifier, '+', '-', '('"
@@ -1098,7 +1132,94 @@ class Parser:
 			args_toks,
 			body_node
 		))
-
+	## Maps are of form map([key, value] (comma [key, value])*)
+	def map_expr(self):
+		res = ParseResult()
+		map_ = {}
+		start_pos = self.current_tok.pos_start.copy()
+		## We should have a map token if we're here
+		if not self.current_tok.matches(TT_KEYWORD, 'map'):
+			return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				f"Expected 'map'"
+			))
+		# advance past map keyword
+		res.register_advancement()
+		self.advance()
+		# check for left pareths
+		if not self.current_tok.type == TT_LPAREN:
+				return res.failure(InvalidSyntaxError(
+					self.current_tok.pos_start, self.current_tok.pos_end,
+					f"map keyword must be followed by '("
+				))
+		# advance past left pareths
+		res.register_advancement()
+		self.advance()
+		
+		## Populate map
+		while True:
+			if self.current_tok.type == TT_RPAREN:
+				break
+			if not self.current_tok.type == TT_LSQUARE:
+				return res.failure(InvalidSyntaxError(
+					self.current_tok.pos_start, self.current_tok.pos_end,
+					f"map must be populated with elements in form ['key', val]"
+				))
+			# Advance to first key
+			res.register_advancement()
+			self.advance()
+			# Get first key
+			key = res.register(self.expr())
+			if res.error:
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				"Broken key passed to map"
+				))
+			if not isinstance(key, StringNode):
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				"map keys must be strings"
+				))
+			# Advance past comma
+			if not self.current_tok.type == TT_COMMA:
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				"elements within map definition must be comma separated"
+				))
+			else:
+				res.register_advancement()
+				self.advance()
+			# Get value
+			value = res.register(self.expr())
+			if res.error:
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				"Broken value passed to map"
+				))
+			# Check for end bracket
+			if not self.current_tok.type == TT_RSQUARE:
+				return res.failure(InvalidSyntaxError(
+					self.current_tok.pos_start, self.current_tok.pos_end,
+					f"map must be populated with elements in form [key, val]"
+				))
+			res.register_advancement()
+			self.advance()
+			# Check for comma
+			if self.current_tok.type == TT_COMMA:
+				res.register_advancement()
+				self.advance()
+				if not self.current_tok.type == TT_LSQUARE:
+					return res.failure(InvalidSyntaxError(
+						self.current_tok.pos_start, self.current_tok.pos_end,
+						f"map must be instantited in form map([key, val],[key, val])"
+					))
+			# Assign key value pair to map_
+			map_[key.tok.value] = value
+		# Advance past right pareths
+		res.register_advancement()
+		self.advance()
+		# Return a map node
+		return res.success(MapNode(map_, start_pos, self.current_tok.pos_end.copy()))
 
 	def list_expr(self):
 		res = ParseResult()
@@ -1524,7 +1645,9 @@ class BuiltInFunction(BaseFunction):
 	# is_string 	-> is_string(value): returns true if value is String else False
 	# is_func 		-> is_func(value): returns true if value is String else False
 	# append 		-> append(List, value): new list with value appended
-	# pop	 		-> pop(List, number): pops element from list at desired index
+	# pop	 		-> pop(Map, key) | pop(List, number): pops element from list at desired index
+	# get			-> get(Map, key) | get(List, number): gets a key from a dict or an element at List[index(number)]
+	# set			-> set(Map, key, value) | set(List, number, value): sets a value for a dict or a list at index number
 
 	# print function
 	# prints string representation of values passed
@@ -1583,33 +1706,143 @@ class BuiltInFunction(BaseFunction):
 	execute_append.arg_names = ['List', 'value']
 	# add pop for lists
 	def execute_pop(self, sub_context):
-		list_to_mutate = sub_context.symbol_table.get('List')
-		index_to_pop = sub_context.symbol_table.get('number')
-		if not isinstance(list_to_mutate, List):
+		retreivable_ob = sub_context.symbol_table.get('retreivable')
+		address = sub_context.symbol_table.get('addr')
+		if isinstance(retreivable_ob, List):
+			if not isinstance(address, Number):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Second argument to pop on list must be a number',
+					sub_context
+				)
+				)
+			list_length = len(retreivable_ob.elements)
+			if not address.value>=-list_length or not address.value<list_length:
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Index for pop not valid',
+					sub_context
+				)
+				)
+			element = retreivable_ob.elements.pop(address.value)
+			return RTResult().success(element)
+		elif isinstance(retreivable_ob, Map):
+			if not isinstance(address, String):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'If trying to pop an item from a Map, second argument must be a String',
+					sub_context
+				)
+				)
+			keys = retreivable_ob.map_.keys()
+			if not address.value in keys:
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Key not found in Map',
+					sub_context
+				)
+				)
+			element = retreivable_ob.map_.pop(address.value)
+			return RTResult().success(element)
+		else:
 			return RTResult().failue(RTError(
 				self.pos_start, self.pos_end,
-				'First argument to pop must be a list',
+				'get can only be called on a list or map',
 				sub_context
 			)
 			)
-		if not isinstance(index_to_pop, Number):
+	execute_pop.arg_names = ['retreivable', 'addr']
+
+	# add get for Maps and Lists
+	def execute_get(self, sub_context):
+		retreivable_ob = sub_context.symbol_table.get('retreivable')
+		address = sub_context.symbol_table.get('addr')
+		if isinstance(retreivable_ob, List):
+			if not isinstance(address, Number):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'If trying to index a List, second argument must be a number',
+					sub_context
+				)
+				)
+			list_length = len(retreivable_ob.elements)
+			if not address.value>=-list_length or not address.value<list_length:
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Index for get not valid',
+					sub_context
+				)
+				)
+			element = retreivable_ob.elements[address.value]
+			return RTResult().success(element)
+		elif isinstance(retreivable_ob, Map):
+			if not isinstance(address, String):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'If trying to get an item from a Map, second argument must be a String',
+					sub_context
+				)
+				)
+			keys = retreivable_ob.map_.keys()
+			if not address.value in keys:
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Key not found in Map',
+					sub_context
+				)
+				)
+			element = retreivable_ob.map_[address.value]
+			return RTResult().success(element)
+		else:
 			return RTResult().failue(RTError(
 				self.pos_start, self.pos_end,
-				'Second argument to pop must be a number',
+				'get can only be called on a list or map',
 				sub_context
 			)
 			)
-		list_length = len(list_to_mutate.elements)
-		if not index_to_pop.value>=-list_length or not index_to_pop.value<list_length:
+	execute_get.arg_names = ['retreivable', 'addr']
+
+	# add get for Maps and Lists
+	def execute_set(self, sub_context):
+		retreivable_ob = sub_context.symbol_table.get('retreivable')
+		address = sub_context.symbol_table.get('addr')
+		value = sub_context.symbol_table.get('value')
+		if isinstance(retreivable_ob, List):
+			if not isinstance(address, Number):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'If trying to set a value in List, second argument must be a number',
+					sub_context
+				)
+				)
+			list_length = len(retreivable_ob.elements)
+			if not address.value>=-list_length or not address.value<list_length:
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'Index for set not valid',
+					sub_context
+				)
+				)
+			retreivable_ob.elements[address.value] = value
+			return RTResult().success(Number.null)
+		elif isinstance(retreivable_ob, Map):
+			if not isinstance(address, String):
+				return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'If trying to get an item from a Map, second argument must be a String',
+					sub_context
+				)
+				)
+			retreivable_ob.map_[address.value] = value
+			return RTResult().success(Number.null)
+		else:
 			return RTResult().failue(RTError(
 				self.pos_start, self.pos_end,
-				'Index for pop not valid',
+				'set can only be called on a list or map',
 				sub_context
 			)
 			)
-		element = list_to_mutate.elements.pop(index_to_pop.value)
-		return RTResult().success(element)
-	execute_pop.arg_names = ['List', 'number']
+	execute_set.arg_names = ['retreivable', 'addr', 'value']
 
 BuiltInFunction.print 			= BuiltInFunction('print')
 BuiltInFunction.print_assign 	= BuiltInFunction('print_assign')
@@ -1620,7 +1853,51 @@ BuiltInFunction.is_func 		= BuiltInFunction('is_func')
 BuiltInFunction.is_list 		= BuiltInFunction('is_list')
 BuiltInFunction.append 			= BuiltInFunction('append')
 BuiltInFunction.pop 			= BuiltInFunction('pop')
+BuiltInFunction.get 			= BuiltInFunction('get')
+BuiltInFunction.set 			= BuiltInFunction('set')
 
+class Map(Value):
+	def __init__(self, map_):
+		super().__init__()
+		self.map_ = map_
+
+	# map + [key, val]
+	def added_to(self, other):
+		new_map = self.copy()
+		if isinstance(other, List):
+			list_vals = other.elements
+			if len(list_vals) != 2:
+				return None, Value.illegal_operation(self.pos_start, other.pos_end)
+			else:
+				if not isinstance(list_vals[0], String):
+					return None, Value.illegal_operation(self.pos_start, other.pos_end)
+				new_map.map_[(list_vals[0].value)] = list_vals[1]
+				return new_map, None
+		else:
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+
+	# map - key
+	def subbed_by(self, key):
+		new_map = self.copy()
+		if not isinstance(key, String):
+			return None, Value.illegal_operation(self.pos_start, other.pos_end)
+		try:
+			new_map.map_.pop(key.value)
+			return new_map, None
+		except:
+			return None, RTError(key.pos_start, key.pos_end, 
+			'Invalid Key'
+			)
+	def copy(self):
+		copy = Map(self.map_)
+		copy.set_pos(self.pos_start, self.pos_end)
+		copy.set_context(self.context)
+		return copy
+
+	def __repr__(self):
+		# out_str = '{'
+
+		return f"{self.map_}"
 
 class List(Value):
 	def __init__(self, elements):
@@ -1764,7 +2041,7 @@ class Interpreter:
 
 	def visit_VarAccessNode(self, node, context):
 		res = RTResult()
-		var_name = node.var_name_tok.value
+		var_name = node.tok.value
 		if var_name not in list(context.symbol_table.symbols.keys()):
 			value = Number(0)
 		else:
@@ -1781,7 +2058,7 @@ class Interpreter:
 
 	def visit_VarAssignNode(self, node, context):
 		res = RTResult()
-		var_name = node.var_name_tok.value
+		var_name = node.tok.value
 		if var_name not in list(context.symbol_table.symbols.keys()):
 			context.symbol_table.set(var_name, Number(0))
 		value = res.register(self.visit(node.value_node, context))
@@ -1924,6 +2201,13 @@ class Interpreter:
 			elements.append(res.register(self.visit(element, context)))
 		return res.success(List(elements).set_context(context).set_pos(node.pos_start, node.pos_end))
 
+	def visit_MapNode(self, node, context):
+		res = RTResult()
+		map_ = {}
+		for key in node.map_.keys():
+			map_[key] = (res.register(self.visit(node.map_[key], context)))
+		return res.success(Map(map_).set_context(context).set_pos(node.pos_start, node.pos_end))
+
 	def visit_FuncNode(self, node, context):
 		res = RTResult()
 		func_name = node.func_name_tok.value if node.func_name_tok else None
@@ -1972,6 +2256,8 @@ global_symbol_table.set('is_list', BuiltInFunction('is_list'))
 global_symbol_table.set('append', BuiltInFunction('append'))
 global_symbol_table.set('pop', BuiltInFunction('pop'))
 global_symbol_table.set('is_func', BuiltInFunction('is_func'))
+global_symbol_table.set('get', BuiltInFunction('get'))
+global_symbol_table.set('set', BuiltInFunction('set'))
 
 
 # def run(fn, text):
@@ -1999,12 +2285,12 @@ def run(fn, text):
 	# Generate tokens
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
-	print(tokens)
+	#print(tokens)
 	if error: return None, error
 	# Generate AST
 	parser = Parser(tokens)
 	ast_list = parser.parse()
-	print([item.node for item in ast_list])
+	#print([item.node for item in ast_list])
 	# Run program
 	interpreter = Interpreter()
 	context = Context('<program>')
@@ -2030,7 +2316,9 @@ def run(fn, text):
 		'is_list',
 		'append',
 		'pop',
-		'is_func'
+		'is_func',
+		'get',
+		'set'
 	]
 
 	keys = list(context.symbol_table.symbols.keys())
