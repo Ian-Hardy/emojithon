@@ -154,6 +154,27 @@ KEYWORDS = [
 	'🌎'
 ]
 
+pre_defined_symbols = [
+		'🙅',
+		'👌',
+		'🦜',
+		'🐝',
+		'👀',
+		'#️⃣',
+		'🔤',
+		'📜',
+		'🔧',
+		'🐌',
+		'📏',
+		'🎉',
+		'🐙',
+		'🦥', 
+		'🌚'
+	]
+
+pre_defined_symbols_vals = ''.join(pre_defined_symbols)
+pre_defined_symbols_vals = pre_defined_symbols_vals.join(KEYWORDS)
+
 ## A token class that is used by the lexer. It tracks start and end positions, 
 ## the type and value of a token, and has a helper function to determine if a token matches one of interest
 class Token:
@@ -215,7 +236,7 @@ class Lexer:
 			elif self.current_char in DIGITS:
 				tokens.append(self.make_number())
 			# identifiers
-			elif self.current_char in LETTERS or self.current_char in ('🚫', '👏','🙌'):
+			elif self.current_char in LETTERS+pre_defined_symbols_vals or self.current_char in ('🚫', '👏','🙌'):
 				tokens.append(self.make_identifier())
 			# adder
 			elif self.current_char == '➕':
@@ -323,7 +344,7 @@ class Lexer:
 		id_str = ''
 		pos_start = self.pos.copy()
 
-		while self.current_char != None and self.current_char in LETTERS_DIGITS + '_' + '🚫' +'👏'+'🙌':
+		while self.current_char != None and self.current_char in LETTERS_DIGITS+pre_defined_symbols_vals + '_' + '🚫' +'👏'+'🙌':
 			id_str += self.current_char
 			self.advance()
 
@@ -1052,6 +1073,7 @@ class Parser:
 		return res.success(ForNode(var_name, start_value, end_value, step_value, body))
 
 	def func_def(self):
+
 		res = ParseResult()
 		## We should have a func token if we're here
 		if not self.current_tok.matches(TT_KEYWORD, '💪'):
@@ -1079,7 +1101,7 @@ class Parser:
 					self.current_tok.pos_start, self.current_tok.pos_end,
 					f"Anonymous function def should start with '('"
 				))
-		
+
 		res.register_advancement()
 		self.advance()
 		## Extract Args (if any)
@@ -1114,18 +1136,19 @@ class Parser:
 					))
 		res.register_advancement()
 		self.advance()
+		
 		## Check for arrow
-		if not self.current_tok.type == '👉':
+		if not self.current_tok.matches(TT_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 					self.current_tok.pos_start, self.current_tok.pos_end,
 					f"Function instantiation should be followed by '👉"
 				))
 		res.register_advancement()
 		self.advance()
-
+		
 		body_node = res.register(self.expr())
 		if res.error: return res
-
+	
 		return res.success(FuncNode(
 			func_name_tok,
 			args_toks,
@@ -2292,20 +2315,21 @@ class Interpreter:
 
 global_symbol_table = SymbolTable()
 global_symbol_table.set('null', Number.null)
-global_symbol_table.set('false', Number.false)
-global_symbol_table.set('true', Number.true)
-global_symbol_table.set('print', BuiltInFunction('print'))
-global_symbol_table.set('print_assign', BuiltInFunction('print_assign'))
-global_symbol_table.set('input', BuiltInFunction('input'))
-global_symbol_table.set('is_number', BuiltInFunction('is_number'))
-global_symbol_table.set('is_string', BuiltInFunction('is_string'))
-global_symbol_table.set('is_list', BuiltInFunction('is_list'))
-global_symbol_table.set('append', BuiltInFunction('append'))
-global_symbol_table.set('pop', BuiltInFunction('pop'))
-global_symbol_table.set('is_func', BuiltInFunction('is_func'))
-global_symbol_table.set('get', BuiltInFunction('get'))
-global_symbol_table.set('set', BuiltInFunction('set'))
-global_symbol_table.set('load', BuiltInFunction('load'))
+global_symbol_table.set('🙅', Number.false)
+global_symbol_table.set('👌', Number.true)
+global_symbol_table.set('🦜', BuiltInFunction('print'))
+global_symbol_table.set('🐝', BuiltInFunction('print_assign'))
+global_symbol_table.set('👀', BuiltInFunction('input'))
+global_symbol_table.set('#️⃣', BuiltInFunction('is_number'))
+global_symbol_table.set('🔤', BuiltInFunction('is_string'))
+global_symbol_table.set('📜', BuiltInFunction('is_list'))
+global_symbol_table.set('🐌', BuiltInFunction('append'))
+global_symbol_table.set('🎉', BuiltInFunction('pop'))
+global_symbol_table.set('🔧', BuiltInFunction('is_func'))
+global_symbol_table.set('🐙', BuiltInFunction('get'))
+global_symbol_table.set('🦥', BuiltInFunction('set'))
+global_symbol_table.set('🌚', BuiltInFunction('load'))
+global_symbol_table.set('📏', BuiltInFunction('len'))
 
 # def run(fn, text):
 # 	# Generate tokens
@@ -2353,21 +2377,21 @@ def run(fn, text):
 
 	pre_defined_symbols = [
 		'null',
-		'false',
-		'true',
-		'print',
-		'print_assign',
-		'input',
-		'is_number',
-		'is_string',
-		'is_list',
-		'is_func',
-		'append',
-		'len',
-		'pop',
-		'get',
-		'set', 
-		'load'
+		'🙅',
+		'👌',
+		'🦜',
+		'🐝',
+		'👀',
+		'#️⃣',
+		'🔤',
+		'📜',
+		'🔧',
+		'🐌',
+		'📏',
+		'🎉',
+		'🐙',
+		'🦥', 
+		'🌚'
 	]
 
 	keys = list(context.symbol_table.symbols.keys())

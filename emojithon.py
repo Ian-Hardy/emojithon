@@ -230,7 +230,7 @@ class Lexer:
 				self.advance()
 				tokens.append(self.make_arrow())
 			# minus
-			elif self.current_char == '-':
+			elif self.current_char == '➖':
 				tokens.append(Token(TT_MINUS, pos_start=self.pos))
 				self.advance()
 			# multiply
@@ -637,7 +637,7 @@ class Parser:
 	## Lists are in the form [expression (, expression)*]
 	## If expressions are in the form if <expr> then <expr> else <expr>
 	## For expressions are in the form for <identifier> equals <expr> to <expr> then <expr>
-	## While expressions are in the form while <expr> then <expr>
+	## While expressions are in the form while <expr> do <expr>
 	## Function definitions are in the form func(identifier (comma, identifier)*) arrow <expr>
 	## To return a value from a function, simply add it as the final expression
 	## To return a list of values from a function, simply add a list of values as the final expression
@@ -1038,10 +1038,10 @@ class Parser:
 		else:
 			step_value = None
 
-		if not self.current_tok.matches(TT_KEYWORD, 'then'):
+		if not self.current_tok.matches(TT_KEYWORD, 'do'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
-				f"Expected 'THEN'"
+				f"Expected 'do'"
 			))
 
 		res.register_advancement()
@@ -1648,6 +1648,8 @@ class BuiltInFunction(BaseFunction):
 	# pop	 		-> pop(Map, key) | pop(List, number): pops element from list at desired index
 	# get			-> get(Map, key) | get(List, number): gets a key from a dict or an element at List[index(number)]
 	# set			-> set(Map, key, value) | set(List, number, value): sets a value for a dict or a list at index number
+	# load			-> load(String): runs code in listed program
+	# len			-> len(String): returns number that is length of string
 
 	# print function
 	# prints string representation of values passed
@@ -2333,7 +2335,11 @@ def run(fn, text):
 	# Generate tokens
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
-	#print(tokens)
+	print(tokens)
+	for token in tokens:
+		print(token)
+		print(token.pos_start)
+		print(token.pos_end)
 	if error: return None, error
 	# Generate AST
 	parser = Parser(tokens)
