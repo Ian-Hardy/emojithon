@@ -1,6 +1,8 @@
 # Emojithon
 
-This repo provides an interpreter for my own programming language, Emojithon. Mostly a learning exercise, but please feel free to clone it and write your own Emoji Code! 🦜🦜🦜
+This repo provides an interpreter for my own programming language, Emojithon. Mostly a learning exercise, but super fun once you get the hang of it! Hello world is as easy as 🦜🐣💬👋🌎💬🐓 
+
+Please feel free to clone it and write your own Emoji Code! 🦜🦜🦜
 
 To run emojithon, simply navigate to the root of the repository and run "python3 emojithon.py"
 
