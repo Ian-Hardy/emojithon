@@ -1,5 +1,5 @@
 
-OLD SYMBOLS     MEANING/USE                                             EMOJI
+SYMBOLS         MEANING/USE                                             EMOJI
 
 KEYWORDS
 ∧               And - comparison                                        👏
