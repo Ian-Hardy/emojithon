@@ -1,7 +1,7 @@
 #######################################
 # Code largely inspired and guided by the work by David Callanan 
 # in his youtube series "Make YOUR OWN Programming Language"
-# There were a large number of changes I had to make, including:
+# As I followed along there were quite a few changes I made, including:
 # 	- Adding support for variable assignment without keywords
 # 	- Adding a "bracket compound" node type to support multiple nested expressions
 # 	- Implementing Skip
@@ -14,7 +14,11 @@
 # 	- Queue support
 # 	- Dictionaries
 #	- Built-in functions
-# And of course, implementing all this made me deeply familiar with the base code
+# And of course, implementing all this made me deeply familiar with the base code.
+# Still to do: 
+#	- Multi-line support for control statements and functions
+#	- Class support
+#	- Recursive function callls
 # Lots of fun!
 #######################################
 
