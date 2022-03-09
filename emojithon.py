@@ -2,17 +2,18 @@
 # Code largely inspired and guided by the work by David Callanan 
 # in his youtube series "Make YOUR OWN Programming Language"
 # There were a large number of changes I had to make, including:
-#   - Adding support for variable assignment without keywords
-#   - Adding a "bracket compound" node type to support multiple nested expressions
-#   - Implementing Skip
+# 	- Adding support for variable assignment without keywords
+# 	- Adding a "bracket compound" node type to support multiple nested expressions
+# 	- Implementing Skip
 # 	- Implementing Backet support
 # 	- Implementing Lists
-#   - Allowing access for undefined variables
-#   - Changing a bunch of syntax
+#   	- Allowing access for undefined variables
+# 	- Changing a bunch of syntax
 # 	- Extra built-in functions
 # 	- Extra arithmetic functionality for datatypes
 # 	- Queue support
 # 	- Dictionaries
+#	- Built-in functions
 # And of course, implementing all this made me deeply familiar with the base code
 # Lots of fun!
 #######################################
