@@ -4,6 +4,6 @@ This repo provides an interpreter for my own programming language, Emojithon. Mo
 
 To run emojithon, simply navigate to the root of the repository and run "python3 emojithon.py"
 
-To run some of the examples, simply input 🌚🐣💬examples/{example_file}💬🐓
+To run some of the examples, start up emojithon and simply input 🌚🐣💬examples/{example_file}💬🐓
 
-For instance, to calculate some fibonacci numbers run 🌚🐣💬examples/fib.emoji💬🐓
+For instance, to calculate some fibonacci numbers run emojithon and copy the following: 🌚🐣💬examples/fib.emoji💬🐓
