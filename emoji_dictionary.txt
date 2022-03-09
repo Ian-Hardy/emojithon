@@ -5,14 +5,13 @@ KEYWORDS
 ∧               And - comparison                                        👏
 ∨               Or - comparison                                         🙌
 ¬               Not - negation                                          🚫
-for             For - for loops                                         ⏱️
-to              To - for loop upper lim                                 ➡️
+for             For - for loops                                         ⏰
+to              To - for loop upper lim                                 🚶
 step            Step - optional for loop step                           👣
 if              If - if statement                                       🤷
 then            Then - used in if/else                                  👉
 else            Else - else statement                                   👈
 while           While - while loops                                     ⏳
-do              Do - used in for/do                                     ⚙️
 true            True - bool const                                       👌
 false           False - bool const                                      🙅
 skip            Skip - nothing                                          😶
@@ -20,15 +19,13 @@ func            Function - function definiton                           💪
 map             Dictionary - map definiton                              🌎
 
 SYMBOLS
-+               Plus - addition + other junk                            ➕
++               Plus - addition + other junk                            🍐
 "               Quote - outlines strings                                💬
 ;               semi-colon - separate statements                        🛑
                             (new lines supported as well)               
--               minus - subtraction + other junk                        ➖
-*               multiply - multiply + other junk                        ✖️
-->              arrow - Used after function to denote body              deprecated (now 👉)
-                        (body should be wrapped in a bracket)           
-/               division - divide + other junk                          ➗
+-               minus - subtraction + other junk                        🧂
+*               multiply - multiply + other junk                        🍈
+/               division - divide + other junk                          🍆
 ^               power - power                                           🐳
 (               left parenths                                           🐣
 )               right parents                                           🐓
@@ -39,7 +36,7 @@ SYMBOLS
 .               dot (floats)                                            .
 :=              assignment                                              🙏
 ,               comma (list separator)                                  ,
-=               equals                                                  🧑‍🤝‍🧑
+=               equals                                                  😼
 <               less than                                               😾
 >               greater than                                            😸
 
@@ -47,7 +44,7 @@ BUILT-IN FUNCS
 print           print(value): prints to output                          🦜
 print_assign    print_assign(value): returns string of val              🐝
 input           input(): allows user input (str or int)                 👀
-is_number       is_number(value): bool                                  #️⃣
+is_number       is_number(value): bool                                  🔢
 is_string       is_string(value): bool                                  🔤
 is_func         is_func(value): bool                                    🔧
 is_list         is_list(value): bool                                    📜
@@ -57,10 +54,12 @@ pop             pop(Map, key) | pop(List, number)                       🎉
 get             get(Map, key) | get(List, number)                       🐙
 set             set(Map, key, value) | set(List, number, value)         🦥
 load            load(String): loads and runs contents of a file         🌚
+queue_pop       queue_pop(List): pops the first element of a list       🍫
+queue_set       queue_set(List, value): append value to end of list     🍪
 
-OLD SYNTAX FOR REFERENCING:
-for i:=n to N (step M) do {body}
-if <condition> then body1 else body2
-while <condition> do body
-func function_name(args*) -> {function body}
+READABLE SYNTAX FOR REFERENCING:
+for i:=n to N (step M) then {body (; return val)}
+if <condition> then {body1} else {body2}
+while <condition> then {body}
+func function_name(args*) then {function body}
 map(["key1", val] (, ["keyN", val]*))
