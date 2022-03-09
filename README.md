@@ -12,4 +12,4 @@ For instance, to calculate some fibonacci numbers run emojithon and copy the fol
 
 🌚🐣💬examples/fib.emoji💬🐓
 
-If you want to write your own emoji code, the emoji_dictionary provides some useful keymojis to know, as well as some syntax for control structures, data structures, function definitions and function calling.
+If you want to write your own emoji code, the emoji_dictionary provides some useful keymojis to know, as well as some syntax for control statements, data structures, function definitions and function calling.
