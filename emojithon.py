@@ -26,113 +26,103 @@ import string
 from emoji_lexer import RTError, Lexer
 from emoji_parser import Parser
 
-# CONSTANTS
-## Get symbols to use
-DIGITS = '0123456789'
-LETTERS = string.ascii_letters
-LETTERS_DIGITS = LETTERS + DIGITS + '🚫'
 
-TOKEN_INT				= 'INT'
-TOKEN_FLOAT				= 'FLOAT'
-TOKEN_IDENTIFIER		= 'IDENTIFIER'
+# Need to reference these in the binop and unary op visits
 TOKEN_KEYWORD			= 'KEYWORD'
 TOKEN_PLUS				= 'PLUS'
 TOKEN_MINUS				= 'MINUS'
 TOKEN_MUL				= 'MUL'
 TOKEN_DIV				= 'DIV'
 TOKEN_POW				= 'POW'
-TOKEN_ASSIGN			= 'ASSIGN'
-TOKEN_EQ				= 'EQ'
-TOKEN_LPAREN			= 'LPAREN'
-TOKEN_RPAREN			= 'RPAREN'
-TOKEN_LBRAC				= 'LBRAC'
-TOKEN_RBRAC				= 'RBRAC'
-TOKEN_LSQUARE          	= 'LSQUARE'
-TOKEN_RSQUARE          	= 'RSQUARE'
 TOKEN_EE				= 'EE'
 TOKEN_LT				= 'LT'
 TOKEN_GT				= 'GT'
-TOKEN_EOF				= 'EOF'
-TOKEN_SEMI				= 'SEMI'
-TOKEN_COMMA				= 'COMMA'
-TOKEN_STRING			= 'STRING'
-TOKEN_NEWLINE			= 'NEWLINE'
 
-# These are the keywords in our language
-# Note that built-in function definitons are added to our global symbol table at runtime,
-# are named identifiers by the lexer, and are picked up in the call() level of the parser
-KEYWORDS = [
-	'👏',
-	'🙌',
-	'🚫',
-	'⏰',
-	'🚶',
-	'👣',
-	'🤷',
-	'👈',
-	'⏳',
-	'👉',
-	'👌',
-	'🙅', 
-	'😶',
-	'💪',
-	'📚'
-]
-
-pre_defined_symbols = [
-		'🙅',
-		'👌',
-		'🦜',
-		'🐝',
-		'👀',
-		'🔢',
-		'🔤',
-		'📜',
-		'🔧',
-		'🐌',
-		'📏',
-		'🎉',
-		'🐙',
-		'🦥', 
-		'🌚',
-		'🍫',
-		'🍪'
-	]
-
-#######################################
+#####################################################################################################################
 # RUNTIME RESULT
-#######################################
+# This class is used to evaluate the results of expressions at runtime
 
 class RTResult:
+	# It gets a return value (sometimes None) and an error (Hopefully none... but useful for debugging)
 	def __init__(self):
 		self.value = None
 		self.error = None
-
+	# If we register an expression, if there's no error, we return the value of the expression
 	def register(self, res):
 		if res.error: self.error = res.error
 		return res.value
-
+	# Success sets the value of the runtime result
 	def success(self, value):
 		self.value = value
 		return self
-
+	# Failure sets the error value of the runtime result
 	def failure(self, error):
 		self.error = error
 		return self
 
-#######################################
+#####################################################################################################################
+# CONTEXT
+# This tacks the context (dictionary) of variables and their values,
+# with pointers to parent dictionaries in the case of nested contexts (i.e. in functions)
+
+class Context:
+	def __init__(self, display_name, parent=None, parent_entry_pos=None):
+		self.display_name = display_name
+		self.parent = parent
+		self.parent_entry_pos = parent_entry_pos
+		self.symbol_table = None
+
+#####################################################################################################################
+# SYMBOL TABLE
+# Symbol tables are basically dictionaries with parent pointers
+
+class SymbolTable:
+	# Instantiate empty symbol table and parent reference, if there is one 
+	def __init__(self, parent=None):
+		self.symbols = {}
+		self.parent = parent
+	
+	# returns the value of a given key, or the value of the parent (recursively) if there is one
+	def get(self, name):
+		value = self.symbols.get(name, None)
+		if value == None and self.parent:
+			return self.parent.get(name)
+		return value
+
+	# Sets the value of a key to the passed value
+	def set(self, name, value):
+		self.symbols[name] = value
+
+	# Deletes an element from a symbol table
+	def remove(self, name):
+		del self.symbols[name]
+
+#####################################################################################################################
 # VALUES
-#######################################
+# These are the "types" of our language
+# They all inherit from the "value" class, which instantiates functions because atoms can be operated on
+# Some atoms cannot be operated on, and so they will throw an error in that case
+# The supported values are:
+#	- String
+#	- Number
+#	- Built in Function and Function (both inheriting from the base function class)
+#	- Map
+#	- List
+# 	- Queue
+
 class Value:
+	# Values have a start and end position and a context
+	# Initialized at None until set
 	def __init__(self):
 		self.set_pos()
 		self.set_context()
 
+	# set position
 	def set_pos(self, pos_start=None, pos_end=None):
 		self.pos_start = pos_start
 		self.pos_end = pos_end
 		return self
-
+	# set context
 	def set_context(self, context=None):
 		self.context = context
 		return self
@@ -173,7 +163,8 @@ class Value:
 			'Illegal operation',
 			self.context
 		)
-		
+
+# String value class
 class String(Value):
 	def __init__(self, value):
 		super().__init__()
@@ -181,18 +172,21 @@ class String(Value):
 		self.set_pos()
 		self.set_context()
 
+	# Adding strings basically concats them
 	def added_to(self, other):
 		if isinstance(other, String):
 			return String(self.value+other.value).set_context(self.context), None
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
-
+	
+	# Multiplying strings by numbers repeats them N times
 	def multed_by(self, other):
 		if isinstance(other, Number):
 			return String(self.value*other.value).set_context(self.context), None
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
+	# Subtracting string A from string B deletes all instances of A from B reading left to right
 	def subbed_by(self, other):
 		if isinstance(other, String):
 			original_val = self.value
@@ -215,6 +209,8 @@ class String(Value):
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
+	# Dividing a string by a number N breaks it into N equal pieces 
+	# (with the Nth item potentially having fewer than (len/N) elements)
 	def dived_by(self, other):
 		if isinstance(other, Number):
 			chunks = []
@@ -232,17 +228,20 @@ class String(Value):
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
+	# Returns true if string has a length greater than 0
 	def is_true(self):
 		return len(self.value) >0
-
+	# Copy functionality
 	def copy(self):
 		copy = String(self.value)
 		copy.set_pos(self.pos_start, self.pos_end)
 		copy.set_context(self.context)
 		return copy
+	# Printing representation
 	def __repr__(self):
 		return self.value
 
+# Number value class
 class Number(Value):
 	def __init__(self, value):
 		self.value = value
@@ -257,6 +256,8 @@ class Number(Value):
 	def set_context(self, context=None):
 		self.context = context
 		return self
+
+	# All of the functions below, unless otherwise noted, are what you'd expect
 
 	def added_to(self, other):
 		if isinstance(other, Number):
@@ -313,18 +314,21 @@ class Number(Value):
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
+	# Inherits python behavior
 	def anded_by(self, other):
 		if isinstance(other, Number):
 			return Number(int(self.value and other.value)).set_context(self.context), None
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
-
+	
+	# Inherits python behavior
 	def ored_by(self, other):
 		if isinstance(other, Number):
 			return Number(int(self.value or other.value)).set_context(self.context), None
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
-
+	
+	# Inherits python behavior
 	def notted(self):
 		return Number(1 if self.value == 0 else 0).set_context(self.context), None
 		
@@ -333,27 +337,34 @@ class Number(Value):
 		copy.set_pos(self.pos_start, self.pos_end)
 		copy.set_context(self.context)
 		return copy
-
+	
+	# Inherits python behavior
 	def is_true(self):
 		return self.value != 0
 	
 	def __repr__(self):
 		return str(self.value)
 
+# Setting some constants that are used throughout
 Number.null = Number(0)
 Number.false = Number(0)
 Number.true = Number(1)
 
+# This is the base function class that Function and BuiltInFunction inherit from
 class BaseFunction(Value):
+	# If no function name, function name is anonymous
 	def __init__(self, func_name):
 		super().__init__()
 		self.func_name = func_name or 'anonymous'
 
+	# Generates the new sub context for use in the function
+	# Passes in the current context too, to reference external variables
 	def generate_new_context(self):
 		sub_context = Context(self.func_name, self.context, self.pos_start)
 		sub_context.symbol_table = SymbolTable(sub_context.parent.symbol_table)
 		return sub_context
 
+	# Checks that the number of arguments is correct
 	def check_args(self, arg_names, args):
 		res = RTResult()
 		if len(args) > len(arg_names):
@@ -370,6 +381,7 @@ class BaseFunction(Value):
 				))
 		return res.success(None)
 	
+	# Sets the arg values passed to their corresponding names in the symbol table
 	def fill_args(self, arg_names, args, sub_context):
 		for i in range(len(args)):
 			name = arg_names[i]
@@ -377,6 +389,7 @@ class BaseFunction(Value):
 			value.set_context(sub_context)
 			sub_context.symbol_table.set(name, value)
 
+	# Calls the above functions
 	def check_and_fill_args(self, arg_names, args, sub_context):
 		res = RTResult()
 		res.register(self.check_args(arg_names, args))
@@ -384,6 +397,7 @@ class BaseFunction(Value):
 		self.fill_args(arg_names, args, sub_context)
 		return res.success(None)
 
+# User-defined functions
 class Function(BaseFunction):
 	def __init__(self, func_name, body_node, arg_names):
 		super().__init__(func_name)
@@ -391,9 +405,12 @@ class Function(BaseFunction):
 		self.body_node = body_node
 		self.arg_names = arg_names
 
+	# Execute function that is called when people call the function
 	def execute(self, args):
 		res = RTResult()
 		interp = Interpreter()
+		# This is basically the same functionality as in the parent class
+		# Parent class was added later when creating built-in functions, I still need to clean this up
 		sub_context = Context(self.func_name, self.context, self.pos_start)
 		sub_context.symbol_table = SymbolTable(sub_context.parent.symbol_table)
 
@@ -416,6 +433,7 @@ class Function(BaseFunction):
 			value.set_context(sub_context)
 			sub_context.symbol_table.set(name, value)
 		
+		# Once arguments are filled in, visit the body node in the context of the sub context
 		val = res.register(interp.visit(self.body_node, sub_context))
 		if res.error: return res
 		return res.success(val)
@@ -425,6 +443,7 @@ class Function(BaseFunction):
 		copy.set_context(self.context)
 		copy.set_pos(self.pos_start, self.pos_end)
 		return copy
+	# Label representation as a function in the symbol table
 	def __repr__(self):
 		return f"Function: {self.func_name}"
 
@@ -435,8 +454,11 @@ class BuiltInFunction(BaseFunction):
 	def execute(self, args):
 		res = RTResult()
 		sub_context = self.generate_new_context()
+		# The method name is called execute_{name}, where 'name' is the built in function name
 		method_name = f'execute_{self.func_name}'
+		# If no method defined, return error message below
 		method = getattr(self, method_name, self.no_visit_method)
+		# Fill arguments and execute function
 		res.register(self.check_and_fill_args(method.arg_names, args, sub_context))
 		if res.error: return res
 		return_value = res.register(method(sub_context))
@@ -467,17 +489,21 @@ class BuiltInFunction(BaseFunction):
 	# get			-> get(Map, key) | get(List, number): gets a key from a dict or an element at List[index(number)]
 	# set			-> set(Map, key, value) | set(List, number, value): sets a value for a dict or a list at index number
 
+	# Below each funtion, we define the arg names so we cal pull them out in the function body
+
 	# print function
 	# prints string representation of values passed
 	def execute_print(self, sub_context):
 		print(str(sub_context.symbol_table.get('value')))
 		return RTResult().success(Number.null)
 	execute_print.arg_names = ['value']
+	
 	# print assign function
 	# return the value that would be printed
 	def execute_print_assign(self, sub_context):
 		return RTResult().success(String(str(sub_context.symbol_table.get('value'))))
 	execute_print_assign.arg_names = ['value']
+	
 	## Allow user-defined input
 	def execute_input(self, sub_context):
 		text = input()
@@ -487,26 +513,31 @@ class BuiltInFunction(BaseFunction):
 		except:
 			return RTResult().success(String(text))
 	execute_input.arg_names = []
+	
 	# Check if a value is a number
 	def execute_is_number(self, sub_context):
 		is_number = isinstance(sub_context.symbol_table.get('value'), Number)
 		return RTResult().success(Number.true if is_number else Number.false)
 	execute_is_number.arg_names = ['value']
+	
 	# check if a value is a string
 	def execute_is_string(self, sub_context):
 		is_string = isinstance(sub_context.symbol_table.get('value'), String)
 		return RTResult().success(Number.true if is_string else Number.false)
 	execute_is_string.arg_names = ['value']
+	
 	# check if a value is a function
 	def execute_is_func(self, sub_context):
 		is_func = isinstance(sub_context.symbol_table.get('value'), Function) or isinstance(sub_context.symbol_table.get('value'), BuiltInFunction)
 		return RTResult().success(Number.true if is_func else Number.false)
 	execute_is_func.arg_names = ['value']
+	
 	# check if a value is a list
 	def execute_is_list(self, sub_context):
 		is_list = isinstance(sub_context.symbol_table.get('value'), List)
 		return RTResult().success(Number.true if is_list else Number.false)
 	execute_is_list.arg_names = ['value']
+	
 	# add append for lists
 	def execute_append(self, sub_context):
 		list_to_append_to = sub_context.symbol_table.get('List')
@@ -522,6 +553,8 @@ class BuiltInFunction(BaseFunction):
 		list_to_append_to.elements.append(val_to_append)
 		return RTResult().success(Number.null)
 	execute_append.arg_names = ['List', 'value']
+
+	# Basic length functionality
 	def execute_len(self, sub_context):
 		list_to_measure = sub_context.symbol_table.get('List')
 
@@ -535,13 +568,14 @@ class BuiltInFunction(BaseFunction):
 		length = len(list_to_measure.elements)
 		return RTResult().success(Number(length))
 	execute_len.arg_names = ['List']
-	# add pop for lists
+
+	# pops first element form queue
 	def execute_queue_pop(self, sub_context):
 		retreivable_ob = sub_context.symbol_table.get('retreivable')
-		if not isinstance(retreivable_ob, List):
+		if not isinstance(retreivable_ob, Queue):
 			return RTResult().failue(RTError(
 					self.pos_start, self.pos_end,
-					'Queue pop can only be called on lists',
+					'Queue pop can only be called on queues',
 					sub_context
 				)
 			)
@@ -555,14 +589,15 @@ class BuiltInFunction(BaseFunction):
 		element = retreivable_ob.elements.pop(0)
 		return RTResult().success(element)
 	execute_queue_pop.arg_names = ['retreivable']
-
+	
+	# sets last element of queues	
 	def execute_queue_set(self, sub_context):
 		retreivable_ob = sub_context.symbol_table.get('retreivable')
 		val = sub_context.symbol_table.get('val')
-		if not isinstance(retreivable_ob, List):
+		if not isinstance(retreivable_ob, Queue):
 			return RTResult().failue(RTError(
 					self.pos_start, self.pos_end,
-					'Queue pop can only be called on lists',
+					'Queue pop can only be called on queues',
 					sub_context
 				)
 			)
@@ -570,6 +605,7 @@ class BuiltInFunction(BaseFunction):
 		return RTResult().success(Number.null)
 	execute_queue_set.arg_names = ['retreivable', 'val']
 
+	# Pop from string or map at index or key
 	def execute_pop(self, sub_context):
 		retreivable_ob = sub_context.symbol_table.get('retreivable')
 		address = sub_context.symbol_table.get('addr')
@@ -667,7 +703,8 @@ class BuiltInFunction(BaseFunction):
 			)
 	execute_get.arg_names = ['retreivable', 'addr']
 
-	# add get for Maps and Lists
+	# add set for Maps and Lists
+	# Most of this is checks, all of the functionality is what you'd expect
 	def execute_set(self, sub_context):
 		retreivable_ob = sub_context.symbol_table.get('retreivable')
 		address = sub_context.symbol_table.get('addr')
@@ -719,7 +756,9 @@ class BuiltInFunction(BaseFunction):
 					sub_context
 				)
 				)
+		# Get string from String value
 		fp = fp.value
+		# Try opening the file, assign it to script (text)
 		try:
 			with open(fp, "r") as f:
 				script = f.read()
@@ -730,15 +769,16 @@ class BuiltInFunction(BaseFunction):
 					sub_context
 				)
 				)
-		run(fp, script)
-		## TODO: change run to include error reporting/result
-		# if error:
-		# 	return RTResult().failue(RTError(
-		# 			self.pos_start, self.pos_end,
-		# 			'failed to execute code from file {}'.format(fp),
-		# 			sub_context
-		# 		)
-		# 		)
+		# Run text
+		_, error = run(fp, script)
+		# If there's an error, return an error
+		if error:
+			return RTResult().failue(RTError(
+					self.pos_start, self.pos_end,
+					'failed to execute code from file {}'.format(fp),
+					sub_context
+				)
+				)
 		return RTResult().success(Number.null)
 	execute_load.arg_names = ['fp']
 
@@ -811,15 +851,14 @@ class List(Value):
 		new_list.elements.append(item)
 		return new_list, None
 	
+	# Multiply all elements by value
+	# TODO: add more type checking here to prevent errors
 	def multed_by(self, val):
-		# new_els = []
-		# for element in self.elements:
-		# 	print(type(element))
-		# 	if 
 		new_els = [Number(element.value * val.value) for element in self.elements]
 		new_list = List(new_els)
 		return new_list, None
 	
+	# If two lists are the same, return true
 	def get_comparison_eq(self, other):
 		if isinstance(other, List):
 			self_els = self.elements
@@ -835,6 +874,7 @@ class List(Value):
 		else:
 			return None, Value.illegal_operation(self.pos_start, other.pos_end)
 
+	# remove element at index val
 	def subbed_by(self, val):
 		new_list = self.copy()
 		try:
@@ -845,6 +885,7 @@ class List(Value):
 			'Invalid Index'
 			)
 
+	# You can index a list by running list(and)index
 	def anded_by(self, other):
 		if isinstance(other, Number):
 			try:
@@ -865,47 +906,31 @@ class List(Value):
 	def __repr__(self):
 		return f"{self.elements}"
 
+# Queues are restricted in their functionality to the queue set and queue pop methods
+# So this is a lot more limited
+class Queue(Value):
+	def __init__(self, elements):
+		super().__init__()
+		self.elements = elements
 
+	def copy(self):
+		copy = Queue(self.elements)
+		copy.set_pos(self.pos_start, self.pos_end)
+		copy.set_context(self.context)
+		return copy
 
+	def __repr__(self):
+		return f"{self.elements}"
 
-
-#######################################
-# CONTEXT
-#######################################
-
-class Context:
-	def __init__(self, display_name, parent=None, parent_entry_pos=None):
-		self.display_name = display_name
-		self.parent = parent
-		self.parent_entry_pos = parent_entry_pos
-		self.symbol_table = None
-
-#######################################
-# SYMBOL TABLE
-#######################################
-
-class SymbolTable:
-	def __init__(self, parent=None):
-		self.symbols = {}
-		self.parent = None
-
-	def get(self, name):
-		value = self.symbols.get(name, None)
-		if value == None and self.parent:
-			return self.parent.get(name)
-		return value
-
-	def set(self, name, value):
-		self.symbols[name] = value
-
-	def remove(self, name):
-		del self.symbols[name]
-
-#######################################
+#####################################################################################################################
 # INTERPRETER
-#######################################
+# This is where the magic happens!
+# We get a node and a context and we visit them
+# Recall that statement lists are just list types, so we're really just hitting 
+# visit_ListNode first, and visiting each node in its elements
 
 class Interpreter:
+	# If there's no method for the node provided, throw an error
 	def visit(self, node, context):
 		method_name = f'visit_{type(node).__name__}'
 		method = getattr(self, method_name, self.no_visit_method)
@@ -914,16 +939,17 @@ class Interpreter:
 	def no_visit_method(self, node, context):
 		raise Exception(f'No visit_{type(node).__name__} method defined')
 
-	###################################
-
+	# Just returns a number! Easy
 	def visit_NumberNode(self, node, context):
 		return RTResult().success(
 			Number(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
 		)
 
+	# Does nothing! Easy
 	def visit_SkipNode(self, node, context):
 		return RTResult()
 
+	# If we have a true or false value passed, return the ccoreewsponding number
 	def visit_TF_Node(self, node, context):
 		res = RTResult()
 		if node.tok.matches(TOKEN_KEYWORD, '👌'):
@@ -935,12 +961,13 @@ class Interpreter:
 		else:
 			return res.success(result.set_pos(node.pos_start, node.pos_end))
 
+	# Just returns a string! easy
 	def visit_StringNode(self, node, context):
 		return RTResult().success(
 			String(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end)
 		)
 
-
+	# Looks for a variable in the symbol table; if none is there, it returns the value 0
 	def visit_VarAccessNode(self, node, context):
 		res = RTResult()
 		var_name = node.tok.value
@@ -949,15 +976,10 @@ class Interpreter:
 		else:
 			value = context.symbol_table.get(var_name)
 
-		if not value and value != 0:
-			return res.failure(RTError(
-				node.pos_start, node.pos_end,
-				f"'{var_name}' is not defined",
-				context
-			))
 		value = value.copy().set_pos(node.pos_start, node.pos_end).set_context(context)
 		return res.success(value)
 
+	# Assigns a new variable name (node token value) to the result of visiting the node value (expr node)
 	def visit_VarAssignNode(self, node, context):
 		res = RTResult()
 		var_name = node.tok.value
@@ -969,6 +991,7 @@ class Interpreter:
 		context.symbol_table.set(var_name, value)
 		return res.success(value)
 
+	# Visit left and right nodes, plus any optional tokens 
 	def visit_BinOpNode(self, node, context):
 		res = RTResult()
 		left = res.register(self.visit(node.left_node, context))
@@ -1002,6 +1025,7 @@ class Interpreter:
 		else:
 			return res.success(result.set_pos(node.pos_start, node.pos_end))
 
+	# Visit node, plus optional op_token
 	def visit_UnaryOpNode(self, node, context):
 		res = RTResult()
 		number = res.register(self.visit(node.node, context))
@@ -1019,6 +1043,8 @@ class Interpreter:
 		else:
 			return res.success(number.set_pos(node.pos_start, node.pos_end))
 
+	# If the condition is true, visit body1
+	# If not, and there's an else case, visit body2
 	def visit_IfNode(self, node, context):
 		res = RTResult()
 
@@ -1038,6 +1064,8 @@ class Interpreter:
 
 		return res.success(None)
 
+	# While the condition is true (which we get from visiting condition node)
+	# we repeatedly visit the body node
 	def visit_WhileNode(self, node, context):
 		res = RTResult()
 		while True:
@@ -1051,6 +1079,9 @@ class Interpreter:
 
 		return res.success(val)
 
+	# Get start, end and step
+	# set up an internal condition to check if we still need to loop the body
+	# Then loop the body with that condition
 	def visit_ForNode(self, node, context):
 		res = RTResult()
 
@@ -1060,6 +1091,7 @@ class Interpreter:
 		end_value = res.register(self.visit(node.end_value_node, context))
 		if res.error: return res
 
+		# If no step is passed, use a step of 1
 		if node.step_value_node:
 			step_value = res.register(self.visit(node.step_value_node, context))
 			if res.error: return res
@@ -1083,6 +1115,10 @@ class Interpreter:
 
 		return res.success(last_value)
 
+	# For a bracketed list of expressions, we just visit each one
+	# The value returned is the last value in the bracket list
+	# This is currently how we return values from functions
+	# TODO: revist this, would like some kind of early return statement
 	def visit_BracCompoundNode(self, node, context):
 		res = RTResult()
 		for child in node.children:
@@ -1090,6 +1126,7 @@ class Interpreter:
 			if res.error: return res
 		return res.success(value)
 
+	# Just visit each element in the list, return a list with the elements returned from those visits
 	def visit_ListNode(self, node, context):
 		res = RTResult()
 		elements = []
@@ -1098,6 +1135,16 @@ class Interpreter:
 			elements.append(res.register(self.visit(element, context)))
 		return res.success(List(elements).set_context(context).set_pos(node.pos_start, node.pos_end))
 
+	# Just visit each element in the list, return a list with the elements returned from those visits
+	def visit_QueueNode(self, node, context):
+		res = RTResult()
+		elements = []
+
+		for element in node.elements:
+			elements.append(res.register(self.visit(element, context)))
+		return res.success(Queue(elements).set_context(context).set_pos(node.pos_start, node.pos_end))
+
+	# Similar to the above^
 	def visit_MapNode(self, node, context):
 		res = RTResult()
 		map_ = {}
@@ -1105,38 +1152,43 @@ class Interpreter:
 			map_[key] = (res.register(self.visit(node.map_[key], context)))
 		return res.success(Map(map_).set_context(context).set_pos(node.pos_start, node.pos_end))
 
+	# Visiting a function node sets the function name, body, argument name, and gets the internal context set
 	def visit_FuncNode(self, node, context):
 		res = RTResult()
 		func_name = node.func_name_tok.value if node.func_name_tok else None
 		body_node = node.body_node
 		args_names = [name.value for name in node.args_toks]
 		func_value = Function(func_name, body_node, args_names).set_context(context).set_pos(node.pos_start, node.pos_end)
-
+		# if it's a named function, set its value in the symbol table
 		if node.func_name_tok:
 			context.symbol_table.set(func_name, func_value)
 		
 		return res.success(func_value)
 	
+	# To visit a called function, get the function to call, the args, and execute
 	def visit_CallFuncNode(self, node, context):
 		res = RTResult()
 		args = []
-
+		# Val to call is the function name
 		val_to_call = res.register(self.visit(node.func_to_call, context))
 		if res.error: return res
 		val_to_call = val_to_call.copy().set_pos(node.pos_start, node.pos_end)
-
+		# Register the arguments, which could be expressions
 		for arg_node in node.arg_nodes:
 			args.append(res.register(self.visit(arg_node, context)))
 			if res.error: return res
-
+		# Execute function with the arguments
 		return_val = res.register(val_to_call.execute(args))
 		if res.error: return res
+		# Return result!
 		return_val = return_val.copy().set_pos(node.pos_start, node.pos_end).set_context(context)
 		return res.success(return_val)
 
-#######################################
+#####################################################################################################################
 # RUN
-#######################################
+# FINALLY we can bring it allll together.
+# First of all, we'll set up our global symbol table with Null, True, False, 
+# and all of our built-in functions
 
 global_symbol_table = SymbolTable()
 global_symbol_table.set('null', Number.null)
@@ -1158,6 +1210,8 @@ global_symbol_table.set('📏', BuiltInFunction('len'))
 global_symbol_table.set('🍫', BuiltInFunction('queue_pop'))
 global_symbol_table.set('🍪', BuiltInFunction('queue_set'))
 
+## This is the main function for running everything
+# It's also called by "load"
 def run(fn, text):
 	# Generate tokens
 	lexer = Lexer(fn, text)
@@ -1168,7 +1222,6 @@ def run(fn, text):
 	parser = Parser(tokens)
 	ast_list = parser.parse()
 	if ast_list.error: return None, ast_list.error
-	# print([item.node for item in ast_list])
 	# Run program
 	interpreter = Interpreter()
 	context = Context('<program>')
@@ -1176,7 +1229,12 @@ def run(fn, text):
 	result = interpreter.visit(ast_list.node, context)
 	if result.error: print(result.error)
 	if result.error: return None, result.error
-
+	if len(result.value.elements) == 1:
+		print(result.value.elements[0])
+	else:
+		print(result.value.elements)
+	# When we print our final global state, we don't want our built-in functions listed,
+	# so we define a list here
 	pre_defined_symbols = [
 		'null',
 		'🙅',
@@ -1198,12 +1256,14 @@ def run(fn, text):
 		'🍪'
 	]
 	
-
+	# We print our global symbol table alphabetically
 	keys = list(context.symbol_table.symbols.keys())
 	keys.sort()
 	out_str = '{'
 	num_iter = -1
+	# This check ensures we don't print the symbol table twice while calling "load"
 	if tokens[0].value != '🌚':
+		# This just pretty-prints the symbol table
 		for val in keys:
 			if val in pre_defined_symbols:
 				continue
@@ -1224,7 +1284,11 @@ def run(fn, text):
 				out_str += str(val)+' → '+str(context.symbol_table.symbols[val])
 		out_str += '}'
 		print(out_str)
+	
+	# Finally, we return the result and value
+	return result.value, result.error
 
+# Main just calls run
 def main():
 	while True:
 		text = input('emoji > ')

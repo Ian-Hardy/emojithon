@@ -43,6 +43,8 @@ TOKEN_LBRAC			    = 'LBRAC'
 TOKEN_RBRAC			    = 'RBRAC'
 TOKEN_LSQUARE           = 'LSQUARE'
 TOKEN_RSQUARE           = 'RSQUARE'
+TOKEN_QLSQUARE          = 'QLSQUARE'
+TOKEN_QRSQUARE          = 'QRSQUARE'
 TOKEN_EE				= 'EE'
 TOKEN_LT				= 'LT'
 TOKEN_GT				= 'GT'
@@ -147,6 +149,7 @@ class VarAssignNode:
 
 		self.pos_start = self.tok.pos_start
 		self.pos_end = self.value_node.pos_end
+
 # tracks NODE OP NODE utilities. Start/end similar to var assign
 class BinOpNode:
 	def __init__(self, left_node, op_tok, right_node):
@@ -171,12 +174,14 @@ class UnaryOpNode:
 
 	def __repr__(self):
 		return f'({self.op_tok}, {self.node})'
+
 # Skip does nothing. Inherited from WHILE homework, thought I might as well leave it in
 class SkipNode:
 	def __init__(self, tok):
 		self.tok = tok
 		self.pos_start = self.tok.pos_start
 		self.pos_end = self.tok.pos_end
+
 # If node tracks cases (comparison and body) and else case
 class IfNode:
 	def __init__(self, cases, else_case):
@@ -185,6 +190,7 @@ class IfNode:
 
 		self.pos_start = self.cases[0][0].pos_start
 		self.pos_end = (self.else_case or self.cases[len(self.cases) - 1][0]).pos_end
+
 # While node just needs to track a condition and a body
 class WhileNode:
 	def __init__(self, condition_node, body_node):
@@ -193,6 +199,7 @@ class WhileNode:
 
 		self.pos_start = self.condition_node.pos_start
 		self.pos_end = self.body_node.pos_end
+
 # For node is a bit more complex
 # it requires a variable name for your counter, a start value, an end value, 
 # an optional step value, and a body node
@@ -206,6 +213,7 @@ class ForNode:
 
 		self.pos_start = self.var_name_tok.pos_start
 		self.pos_end = self.body_node.pos_end
+
 # Functions require function names, arguments, and a body node
 class FuncNode:
 	def __init__(self, func_name_tok, args_toks, body_node):
@@ -221,6 +229,7 @@ class FuncNode:
 			self.pos_start = self.body_node.pos_start
 
 		self.pos_end = self.body_node.pos_end
+
 # Node required to call a function
 class CallFuncNode:
 	def __init__(self, func_to_call, arg_nodes):
@@ -233,6 +242,7 @@ class CallFuncNode:
 			self.pos_end = self.arg_nodes[len(self.arg_nodes)-1].pos_end
 		else:
 			self.pos_end = self.func_to_call.pos_end
+
 # Bracket compound node for nested-multi statements. Keeps children as a list, start/end pos determined in parser
 class BracCompoundNode:
 	"""Represents a block of statements"""
@@ -243,6 +253,13 @@ class BracCompoundNode:
 
 ## List node just has elements. Start/end pos determined in parser, as empty lists can't determine start/end
 class ListNode:
+	def __init__(self, elements, start_pos, end_pos):
+		self.elements = elements
+		self.pos_start = start_pos
+		self.pos_end = end_pos
+
+## Queues are basically the same as Lists, but with more restricted functionality
+class QueueNode:
 	def __init__(self, elements, start_pos, end_pos):
 		self.elements = elements
 		self.pos_start = start_pos
@@ -353,12 +370,13 @@ class Parser:
 			))
 		return res
 
-	## 
+	## Statement lists are expressions followed by semi colons or new lines
+	## Plus more expressions
 	def statement_list(self):
 
 		"""
-        statement_list : expr ((SEMI | NEWLINE)* expr)*
-        """
+		statement_list : expr ((SEMI | NEWLINE)* expr)*
+		"""
 		res = ParseResult()
 		pos_start = self.current_tok.pos_start.copy()
 
@@ -372,42 +390,45 @@ class Parser:
 		if res.error: return res
 		statements.append(expression)
 
-		more_statement = True
-
+		more_expression = True
+		# Look for some more expressions
 		while True:
 			num_lines = 0
+			# Advance past semis and new lines
 			while self.current_tok.type == TOKEN_SEMI or self.current_tok.type == TOKEN_NEWLINE:
 				res.register_advancement()
 				self.advance()
 				num_lines += 1
 			if num_lines == 0:
-				more_statement = False
-
-			if not more_statement:
+				more_expression = False
+			# If no more expressions, break
+			if not more_expression:
 				break
-			
+			# If there's an issue with registering an expression, reverse
 			expression = res.try_register(self.expr())
 			if not expression:
 				self.reverse(res.to_reverse_count)
-				more_statements = False
+				more_expression = False
 				continue
 			statements.append(expression)
-		
+		# Statement list is a list of expressions (using the internal list datatype)
 		return res.success(ListNode(
 			statements, 
 			pos_start, 
 			self.current_tok.pos_end.copy()
 		))
-
+	
+	# Helper function for peeking ahead to check for variable assignment vs. just variable access
 	def peek(self):
 		if self.tok_idx < len(self.tokens)-1:
 			return self.tokens[self.tok_idx + 1]
 		else:
 			return None
-
+	
+	# Expression is either variable assignment or a (series of) compound expression(s)
 	def expr(self):
 		res = ParseResult()
-		
+		# If it's an assign statement, make an assign node with variable name and expression
 		next_tok = self.peek()
 		if self.current_tok.type == TOKEN_IDENTIFIER and next_tok.type == TOKEN_EQ:
 			var_name = self.current_tok
@@ -420,7 +441,7 @@ class Parser:
 			expr = res.register(self.expr())
 			if res.error: return res
 			return res.success(VarAssignNode(var_name, expr))
-
+        # otherwise, binary operation of compound expression (and/or compound expr)
 		node = res.register(self.bin_op(self.comp_expr, ((TOKEN_KEYWORD, '👏'), (TOKEN_KEYWORD, '🙌'))))
 		if res.error:
 			return res.failure(InvalidSyntaxError(
@@ -428,7 +449,9 @@ class Parser:
 				"Expected 'VAR', int, float, identifier, '+', '-', '(' or '🚫'"
 			))
 		return res.success(node)
-
+    
+	# Compound expression checks for unary op (NOT), otherwise registers a binary operation with 
+	# an arithmetic expression
 	def comp_expr(self):
 		res = ParseResult()
 
@@ -451,15 +474,16 @@ class Parser:
 			))
 
 		return res.success(node)
-
+	# Operates on one or more elements
 	def bin_op(self, func_a, ops, func_b=None):
+
 		if func_b == None:
 			func_b = func_a
 		
 		res = ParseResult()
 		left = res.register(func_a())
 		if res.error: return res
-
+		# If there's an operation, return binary node with left op right
 		while self.current_tok.type in ops or (self.current_tok.type, self.current_tok.value) in ops:
 			op_tok = self.current_tok
 			res.register_advancement()
@@ -467,14 +491,20 @@ class Parser:
 			right = res.register(func_b())
 			if res.error: return res
 			left = BinOpNode(left, op_tok, right)
+		# If no operation, just return left
 		return res.success(left)
 
+	# This series of definitions is how we set up precedence:
+	
+	# Arithmetic-- term +/- term
 	def arith_expr(self):
 		return self.bin_op(self.term, (TOKEN_PLUS, TOKEN_MINUS))
-
+	
+	# Term-- factor *// factor
 	def term(self):
 		return self.bin_op(self.factor, (TOKEN_MUL, TOKEN_DIV))
-
+	
+	# Factor-- +/-(expression) or power
 	def factor(self):
 		res = ParseResult()
 		tok = self.current_tok
@@ -488,9 +518,12 @@ class Parser:
 
 		return self.power()
 
+	# Binary operator with call, followed by optional power token and factor
 	def power(self):
 		return self.bin_op(self.call, (TOKEN_POW, ), self.factor)
-
+	
+	# Call catches function calls-- of form IDNETIFIER(args*)
+	# If no function call, returns an atom
 	def call(self):
 		res = ParseResult()
 		## get a function
@@ -529,31 +562,32 @@ class Parser:
 			return res.success(CallFuncNode(atom, arg_nodes))
 		## If not a function, return atom
 		return res.success(atom)
-
+    
+	# The "base unit" of our parser
 	def atom(self):
 		res = ParseResult()
 		tok = self.current_tok
-
+        # Number nodes
 		if tok.type in (TOKEN_INT, TOKEN_FLOAT):
 			res.register_advancement()
 			self.advance()
 			return res.success(NumberNode(tok))
-
+        # String nodes
 		if tok.type in (TOKEN_STRING):
 			res.register_advancement()
 			self.advance()
 			return res.success(StringNode(tok))
-
+        # True/False node
 		if tok.matches(TOKEN_KEYWORD, '👌') or tok.matches(TOKEN_KEYWORD, '🙅'):
 			res.register_advancement()
 			self.advance()
 			return res.success(TF_Node(tok))
-
+        # Identifier node
 		elif tok.type == TOKEN_IDENTIFIER:
 			res.register_advancement()
 			self.advance()
 			return res.success(VarAccessNode(tok))
-
+        # Left parenths-- for a grouping expressions i.e. (4+2)/2 vs 4+2/2
 		elif tok.type == TOKEN_LPAREN:
 			res.register_advancement()
 			self.advance()
@@ -568,7 +602,9 @@ class Parser:
 					self.current_tok.pos_start, self.current_tok.pos_end,
 					"Expected ')'"
 				))
-
+        # Left bracket-- also for grouped expressions, but expressed as a list separated by semi colons
+        # Return value is the value of the last item in the list-- this behavior is defined in the interpreter
+        # This is how we "return" values in functions currently
 		elif tok.type == TOKEN_LBRAC:
 			res.register_advancement()
 			self.advance()
@@ -590,53 +626,64 @@ class Parser:
 					self.current_tok.pos_start, self.current_tok.pos_end,
 					"Expected '}'"
 				))
-
+        # Square brackets define lists
 		elif tok.type == TOKEN_LSQUARE:
 			list_expr = res.register(self.list_expr())
 			if res.error: return res
 			return res.success(list_expr)
-
+		# Square q-left brackets define queues
+		elif tok.type == TOKEN_QLSQUARE:
+			queue_expr = res.register(self.queue_expr())
+			if res.error: return res
+			return res.success(queue_expr)
+        # Skip node
 		elif tok.matches(TOKEN_KEYWORD, '😶'):
 			res.register_advancement()
 			self.advance()
 			return res.success(SkipNode(tok))
-
+        # If expression
 		elif tok.matches(TOKEN_KEYWORD, '🤷'):
 			if_expr = res.register(self.if_expr())
 			if res.error: return res
 			return res.success(if_expr)
-
+        # For expression
 		elif tok.matches(TOKEN_KEYWORD, '⏰'):
 			for_expr = res.register(self.for_expr())
 			if res.error: return res
 			return res.success(for_expr)
-
+        # While expression
 		elif tok.matches(TOKEN_KEYWORD, '⏳'):
 			while_expr = res.register(self.while_expr())
 			if res.error: return res
 			return res.success(while_expr)
-
+        # Function definition
 		elif tok.matches(TOKEN_KEYWORD, '💪'):
 			func_def = res.register(self.func_def())
 			if res.error: return res
 			return res.success(func_def)
-
+        # Dictionary (map)
 		elif tok.matches(TOKEN_KEYWORD, '📚'):
 			map_expr = res.register(self.map_expr())
 			if res.error: return res
 			return res.success(map_expr)
-
+        # If
 		return res.failure(InvalidSyntaxError(
 			tok.pos_start, tok.pos_end,
-			"Expected if, ⏰, while, 💪, skip, int, float, identifier, '+', '-', '('"
+			"Expected 🤷, ⏰, ⏳, 💪, 😶, int, float, identifier, grouper or string"
 		))
 
-
+    # If expression looks for:
+    #   - If keymoji
+    #   - condition
+    #   - then
+    #   - body1
+    #   - else
+    #   - body2
 	def if_expr(self):
 		res = ParseResult()
 		cases = []
 		else_case = None
-
+        # should see an if token here
 		if not self.current_tok.matches(TOKEN_KEYWORD, '🤷'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -645,10 +692,10 @@ class Parser:
 
 		res.register_advancement()
 		self.advance()
-
+        # register condition
 		condition = res.register(self.expr())
 		if res.error: return res
-
+        # should see a then here
 		if not self.current_tok.matches(TOKEN_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -657,22 +704,29 @@ class Parser:
 
 		res.register_advancement()
 		self.advance()
-
+        # Register body1
 		expr = res.register(self.expr())
 		if res.error: return res
+        # Cases tracks condition and body1
 		cases.append((condition, expr))
-
+        # can see a then
 		if self.current_tok.matches(TOKEN_KEYWORD, '👈'):
 			res.register_advancement()
 			self.advance()
-
+            # if so register the body2
 			else_case = res.register(self.expr())
 			if res.error: return res
+        # Return an if node
 		return res.success(IfNode(cases, else_case))
 
+    # While expression looks for:
+    #   - while keymoji
+    #   - condition
+    #   - then
+    #   - body
 	def while_expr(self):
 		res = ParseResult()
-		
+		# double check token type
 		if not self.current_tok.matches(TOKEN_KEYWORD, '⏳'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -681,25 +735,34 @@ class Parser:
 
 		res.register_advancement()
 		self.advance()
-
+        # get condition
 		condition = res.register(self.expr())
 		if res.error: return res
-
+        # check for then
 		if not self.current_tok.matches(TOKEN_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
 				f"Expected '👉'"
 			))
-
 		res.register_advancement()
 		self.advance()
+        # get body
 		body = res.register(self.expr())
 		if res.error: return res
+        # return while node
 		return res.success(WhileNode(condition, body))
 
+    # For expression looks for:
+    #   - for keymoji
+    #   - var assign
+    #   - to
+    #   - expression
+    #   - optional step
+    #   - optional step value
+    #   - body
 	def for_expr(self):
 		res = ParseResult()
-
+        # double check keyword
 		if not self.current_tok.matches(TOKEN_KEYWORD, '⏰'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -708,7 +771,7 @@ class Parser:
 
 		res.register_advancement()
 		self.advance()
-
+        # Need an internal variable to track condition
 		if self.current_tok.type != TOKEN_IDENTIFIER:
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -719,18 +782,19 @@ class Parser:
 		res.register_advancement()
 		self.advance()
 
+        # Get assignment
 		if self.current_tok.type != TOKEN_EQ:
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
-				f"Expected '='"
+				f"Expected ':='"
 			))
 		
 		res.register_advancement()
 		self.advance()
-
+        # Get starting val
 		start_value = res.register(self.expr())
 		if res.error: return res
-
+        # Get "to"
 		if not self.current_tok.matches(TOKEN_KEYWORD, '🚶'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -739,10 +803,10 @@ class Parser:
 		
 		res.register_advancement()
 		self.advance()
-
+        # get end val
 		end_value = res.register(self.expr())
 		if res.error: return res
-
+        # If there's a step, register step value
 		if self.current_tok.matches(TOKEN_KEYWORD, '👣'):
 			res.register_advancement()
 			self.advance()
@@ -751,7 +815,7 @@ class Parser:
 			if res.error: return res
 		else:
 			step_value = None
-
+        # Check for then 
 		if not self.current_tok.matches(TOKEN_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -760,12 +824,18 @@ class Parser:
 
 		res.register_advancement()
 		self.advance()
-
+        # Get main body of for loop
 		body = res.register(self.expr())
 		if res.error: return res
-
+        # Return for node
 		return res.success(ForNode(var_name, start_value, end_value, step_value, body))
 
+    # Function defintion looks for:
+    #   - func keymoji
+    #   - function name
+    #   - args in parenths
+    #   - then
+    #   - body
 	def func_def(self):
 
 		res = ParseResult()
@@ -788,6 +858,7 @@ class Parser:
 					self.current_tok.pos_start, self.current_tok.pos_end,
 					f"Function name must be followed by '("
 				))
+        # Supports anonymous functions
 		else:
 			func_name_tok = None
 			if not self.current_tok.type == TOKEN_LPAREN:
@@ -801,10 +872,11 @@ class Parser:
 		## Extract Args (if any)
 		args_toks = []
 		if self.current_tok.type == TOKEN_IDENTIFIER:
+            # Get arg tokens
 			args_toks.append(self.current_tok)
 			res.register_advancement()
 			self.advance()
-
+            # Look for more (, arg)
 			while self.current_tok.type == TOKEN_COMMA:
 				res.register_advancement()
 				self.advance()
@@ -816,13 +888,14 @@ class Parser:
 				args_toks.append(self.current_tok)
 				res.register_advancement()
 				self.advance()
-			
+			# Need a right parenths to close it off
 			if not self.current_tok.type == TOKEN_RPAREN:
 				return res.failure(InvalidSyntaxError(
 						self.current_tok.pos_start, self.current_tok.pos_end,
 						f"Function instantiation should end in ')"
 					))
 		else:
+            # Need a right parenths to close it off
 			if not self.current_tok.type == TOKEN_RPAREN:
 				return res.failure(InvalidSyntaxError(
 						self.current_tok.pos_start, self.current_tok.pos_end,
@@ -831,7 +904,7 @@ class Parser:
 		res.register_advancement()
 		self.advance()
 		
-		## Check for arrow
+		## Check for then
 		if not self.current_tok.matches(TOKEN_KEYWORD, '👉'):
 			return res.failure(InvalidSyntaxError(
 					self.current_tok.pos_start, self.current_tok.pos_end,
@@ -839,10 +912,11 @@ class Parser:
 				))
 		res.register_advancement()
 		self.advance()
-		
+
+        # Get body node out
 		body_node = res.register(self.expr())
 		if res.error: return res
-	
+        # Return a function node
 		return res.success(FuncNode(
 			func_name_tok,
 			args_toks,
@@ -936,32 +1010,46 @@ class Parser:
 		self.advance()
 		# Return a map node
 		return res.success(MapNode(map_, start_pos, self.current_tok.pos_end.copy()))
-
+    # Lists look for:
+    #   - Left square
+    #   - Optional comma separated expressions
+    #   - Right Square
 	def list_expr(self):
 		res = ParseResult()
+        # instantiate internal list
 		elements = []
 		start_pos = self.current_tok.pos_start.copy()
 
+        # Double check initial token
+		if not self.current_tok.type == TOKEN_LSQUARE:
+				return res.failure(InvalidSyntaxError(
+					self.current_tok.pos_start, self.current_tok.pos_end,
+					f"Lists should start with left square bracket"
+				))
+        
 		res.register_advancement()
 		self.advance()
+        # If no elements, we can return an empty list
 		if self.current_tok.type == TOKEN_RSQUARE:
 			res.register_advancement()
 			self.advance()
+        # Otherwise, look for comma separated expressions
 		else:
+            # Append first expression
 			elements.append(res.register(self.expr()))
 			if res.error:
 				return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
 				"Broken elements passed to list"
 				))
-
+            # While comma, look for more expressions
 			while self.current_tok.type == TOKEN_COMMA:
 				res.register_advancement()
 				self.advance()
 
 				elements.append(res.register(self.expr()))
 				if res.error: return res
-
+            # List must end in right square bracket
 			if self.current_tok.type != TOKEN_RSQUARE:
 				return res.failure(InvalidSyntaxError(
 				self.current_tok.pos_start, self.current_tok.pos_end,
@@ -970,5 +1058,56 @@ class Parser:
 
 			res.register_advancement()
 			self.advance()
-
+        # Return list node
 		return res.success(ListNode(elements, start_pos, self.current_tok.pos_end.copy()))
+
+	# Queues look for:
+    #   - Left square
+    #   - Optional comma separated expressions
+    #   - Right Square
+	def queue_expr(self):
+		res = ParseResult()
+        # instantiate internal list
+		elements = []
+		start_pos = self.current_tok.pos_start.copy()
+
+        # Double check initial token
+		if not self.current_tok.type == TOKEN_QLSQUARE:
+				return res.failure(InvalidSyntaxError(
+					self.current_tok.pos_start, self.current_tok.pos_end,
+					f"Lists should start with left square bracket"
+				))
+        
+		res.register_advancement()
+		self.advance()
+        # If no elements, we can return an empty queue
+		if self.current_tok.type == TOKEN_QRSQUARE:
+			res.register_advancement()
+			self.advance()
+        # Otherwise, look for comma separated expressions
+		else:
+            # Append first expression
+			elements.append(res.register(self.expr()))
+			if res.error:
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				"Broken elements passed to list"
+				))
+            # While comma, look for more expressions
+			while self.current_tok.type == TOKEN_COMMA:
+				res.register_advancement()
+				self.advance()
+
+				elements.append(res.register(self.expr()))
+				if res.error: return res
+            # List must end in right square bracket
+			if self.current_tok.type != TOKEN_QRSQUARE:
+				return res.failure(InvalidSyntaxError(
+				self.current_tok.pos_start, self.current_tok.pos_end,
+				f"Expected ',' or ']'"
+				))
+
+			res.register_advancement()
+			self.advance()
+        # Return list node
+		return res.success(QueueNode(elements, start_pos, self.current_tok.pos_end.copy()))

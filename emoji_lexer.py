@@ -41,6 +41,7 @@ class Error:
 		result += f'File {self.pos_start.fn}, line {self.pos_start.ln + 1}'
 		result += '\n\n' + string_with_arrows(self.pos_start.ftxt, self.pos_start, self.pos_end)
 		return result
+
 # Sub classes for errors
 # illegal character			-> invalid character type passed
 # invalid syntax			-> valid character, but not what the parser is expecting
@@ -121,6 +122,8 @@ TOKEN_LBRAC			    = 'LBRAC'
 TOKEN_RBRAC			    = 'RBRAC'
 TOKEN_LSQUARE           = 'LSQUARE'
 TOKEN_RSQUARE           = 'RSQUARE'
+TOKEN_QLSQUARE          = 'QLSQUARE'
+TOKEN_QRSQUARE          = 'QRSQUARE'
 TOKEN_EE				= 'EE'
 TOKEN_LT				= 'LT'
 TOKEN_GT				= 'GT'
@@ -206,10 +209,12 @@ class Lexer:
 		self.pos = Position(-1, 0, -1, fn, text)
 		self.current_char = None
 		self.advance()
+		
 	# helper function for advancing the current position and current character
 	def advance(self):
 		self.pos.advance(self.current_char)
 		self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
+
 	# Helper function for peeking ahead in the case of multi-char tokens that share starting chars
 	# (e.g. = vs ==)
 	def peek(self):
@@ -218,6 +223,7 @@ class Lexer:
 			return None
 		else:
 			return self.text[peek_pos]
+
 	# meat and potatoes
 	def make_tokens(self):
 		# start off with an empty list
@@ -227,6 +233,7 @@ class Lexer:
 			# ignore whitespace
 			if self.current_char in ' \t':
 				self.advance()
+				continue
 			if self.current_char in '\n':
 				tokens.append(Token(TOKEN_NEWLINE, pos_start=self.pos))
 				self.advance()
@@ -289,6 +296,14 @@ class Lexer:
 			elif self.current_char == '🦋':
 				tokens.append(Token(TOKEN_RSQUARE, pos_start=self.pos))
 				self.advance()
+			# left bracket (queue)
+			elif self.current_char == '🐢':
+				tokens.append(Token(TOKEN_QLSQUARE, pos_start=self.pos))
+				self.advance()
+			# right bracket (queue)
+			elif self.current_char == '🦖':
+				tokens.append(Token(TOKEN_QRSQUARE, pos_start=self.pos))
+				self.advance()
 			# comma
 			elif self.current_char == ',':
 				tokens.append(Token(TOKEN_COMMA, pos_start=self.pos))
@@ -338,6 +353,7 @@ class Lexer:
 			return Token(TOKEN_INT, int(num_str), pos_start, self.pos)
 		else:
 			return Token(TOKEN_FLOAT, float(num_str), pos_start, self.pos)
+
 	# create identifiers
 	def make_identifier(self):
 		id_str = ''
@@ -349,12 +365,14 @@ class Lexer:
 		
 		tok_type = TOKEN_KEYWORD if id_str in KEYWORDS else TOKEN_IDENTIFIER
 		return Token(tok_type, id_str, pos_start, self.pos)
+
 	# create string! Emojithon supports stardard escape characters, identified with \
 	def make_string(self):
 		pos_start = self.pos.copy()
 		self.advance()
 		escape_char = False
 		string = ''
+		# Supported escape characters-- new line and tab
 		escape_dict = {
 			'n':'\n',
 			't' : '\t'
@@ -365,7 +383,7 @@ class Lexer:
 			if escape_char:
 				# Either gets the current character from the escape dict, or just the current character
 				string += escape_dict.get(self.current_char, self.current_char)
-
+				escape_char = False
 			else:
 				# Check for escape characters
 				# Need the double backslash to check for a single backslash 
@@ -373,9 +391,8 @@ class Lexer:
 					escape_char = True
 				else:
 					string += self.current_char
+					
 			self.advance()
-			## Add in escape char check above?
-			escape_char = False
 
 		self.advance()
 		pos_end = self.pos.copy()
@@ -387,20 +404,26 @@ class Lexer:
 		pos_start = self.pos.copy()
 		self.advance()
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
 	# make an equals token
+	# TODO: include not equal
 	def make_equals(self):
 		pos_start = self.pos.copy()
 		self.advance()
 		tok_type = TOKEN_EE
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
 	# make a less than token
+	# TODO: include less than equal
 	def make_less_than(self):
 		tok_type = TOKEN_LT
 		pos_start = self.pos.copy()
 		self.advance()
 
 		return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
 	# make a greater than token	
+	# TODO: include greater than equal
 	def make_greater_than(self):
 		tok_type = TOKEN_GT
 		pos_start = self.pos.copy()
