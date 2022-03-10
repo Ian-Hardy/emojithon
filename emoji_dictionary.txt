@@ -29,6 +29,8 @@ SYMBOLS
 ^               power - power                                           🐳
 (               left parenths                                           🐣
 )               right parents                                           🐓
+|               left parthens (queue)                                   🐢
+\               right parthens (queue)                                  🦖
 {               left curly                                              🌱
 }               right curly                                             🌳
 [               left square                                             🐛
@@ -63,3 +65,5 @@ if <condition> then {body1} else {body2}
 while <condition> then {body}
 func function_name(args*) then {function body}
 map(["key1", val] (, ["keyN", val]*))
+Lists -> [val (, val)*]
+Queues -> |val (, val)*\
