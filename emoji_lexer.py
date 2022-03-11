@@ -35,11 +35,40 @@ class Error:
 		self.pos_end = pos_end
 		self.error_name = error_name
 		self.details = details
-	# formatting function
+
+	# Error printing helper
+	def format_error(self, text, pos_start, pos_end):
+		result = ''
+
+		# Calculate indices
+		idx_start = max(text.rfind('\n', 0, pos_start.idx), 0)
+		idx_end = text.find('\n', idx_start + 1)
+		if idx_end < 0: idx_end = len(text)
+		
+		# Generate each line
+		line_count = pos_end.ln - pos_start.ln + 1
+		for i in range(line_count):
+			# Calculate line columns
+			line = text[idx_start:idx_end]
+			col_start = pos_start.col if i == 0 else 0
+			col_end = pos_end.col if i == line_count - 1 else len(line) - 1
+
+			# Append to result
+			result += line + '\n'
+			result += ' ' * col_start + '^' * (col_end - col_start)
+
+			# Re-calculate indices
+			idx_start = idx_end
+			idx_end = text.find('\n', idx_start + 1)
+			if idx_end < 0: idx_end = len(text)
+
+		return result.replace('\t', '')
+
+	# Prints error 
 	def as_string(self):
 		result  = f'{self.error_name}: {self.details}\n'
 		result += f'File {self.pos_start.fn}, line {self.pos_start.ln + 1}'
-		result += '\n\n' + string_with_arrows(self.pos_start.ftxt, self.pos_start, self.pos_end)
+		result += '\n\n' + self.format_error(self.pos_start.ftxt, self.pos_start, self.pos_end)
 		return result
 
 # Sub classes for errors
@@ -209,7 +238,7 @@ class Lexer:
 		self.pos = Position(-1, 0, -1, fn, text)
 		self.current_char = None
 		self.advance()
-		
+
 	# helper function for advancing the current position and current character
 	def advance(self):
 		self.pos.advance(self.current_char)

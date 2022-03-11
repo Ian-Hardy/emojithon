@@ -537,6 +537,18 @@ class BuiltInFunction(BaseFunction):
 		is_list = isinstance(sub_context.symbol_table.get('value'), List)
 		return RTResult().success(Number.true if is_list else Number.false)
 	execute_is_list.arg_names = ['value']
+
+	# check if a value is a map
+	def execute_is_map(self, sub_context):
+		is_map = isinstance(sub_context.symbol_table.get('value'), Map)
+		return RTResult().success(Number.true if is_map else Number.false)
+	execute_is_map.arg_names = ['value']
+
+	# check if a value is a queue
+	def execute_is_queue(self, sub_context):
+		is_queue = isinstance(sub_context.symbol_table.get('value'), Queue)
+		return RTResult().success(Number.true if is_queue else Number.false)
+	execute_is_queue.arg_names = ['value']
 	
 	# add append for lists
 	def execute_append(self, sub_context):
@@ -558,10 +570,10 @@ class BuiltInFunction(BaseFunction):
 	def execute_len(self, sub_context):
 		list_to_measure = sub_context.symbol_table.get('List')
 
-		if not isinstance(list_to_measure, List):
+		if not isinstance(list_to_measure, List) and not isinstance(list_to_measure, Queue):
 			return RTResult().failue(RTError(
 				self.pos_start, self.pos_end,
-				'len argument must be a list',
+				'len argument must be a list or queue',
 				sub_context
 			)
 			)
@@ -1216,7 +1228,7 @@ def run(fn, text):
 	# Generate tokens
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
-	if error: print(error)
+	if error: print(error.as_string())
 	if error: return None, error
 	# Generate AST
 	parser = Parser(tokens)
@@ -1227,12 +1239,8 @@ def run(fn, text):
 	context = Context('<program>')
 	context.symbol_table = global_symbol_table
 	result = interpreter.visit(ast_list.node, context)
-	if result.error: print(result.error)
+	if result.error: print(result.error.as_string())
 	if result.error: return None, result.error
-	if len(result.value.elements) == 1:
-		print(result.value.elements[0])
-	else:
-		print(result.value.elements)
 	# When we print our final global state, we don't want our built-in functions listed,
 	# so we define a list here
 	pre_defined_symbols = [
