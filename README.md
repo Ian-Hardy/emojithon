@@ -1,6 +1,6 @@
 # Em😎jithon
 
-This repo provides an interpreter for my own programming language, Emojithon. Hello world is as easy as 🦜🐣💬👋🌎💬🐓 
+This repo provides an interpreter writing python code purely with Emojis. Hello world is as easy as 🦜🐣💬👋🌎💬🐓 
 
 Please feel free to clone and write your own Emoji Code 🦜🦜🦜
 
